@@ -1,0 +1,15 @@
+# Builds
+build/
+*.pyc
+*.so
+
+# Python stuff
+__pycache__/
+
+# Debian
+n2vm_*-*.deb
+deb/
+
+# Tests
+a.out
+test.out
