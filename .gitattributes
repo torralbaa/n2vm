@@ -1,0 +1,6 @@
+# For some reason, GitHub thinks that .h files are C++ files by default :shrug:
+*.c text diff=c
+*.h text diff=c
+
+# Aaaand let's pretty print .n2 files
+*.n2 text diff=c
