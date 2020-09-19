@@ -1,0 +1,12 @@
+var abc = 0x01;
+
+/*
+ * Comment!
+ *
+ */
+
+func main
+{
+	abc = 0x4000000; // Single-line comment!
+	return 0x00;
+}

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 #
-#  compiler.py
+#  n2as.py
 #  
 #  Copyright 2020 Alvarito050506 <donfrutosgomez@gmail.com>
 #  
@@ -28,9 +28,14 @@ from getopt import *
 from codecs import encode, decode
 
 base_regex = r"\s*(.*)\s*";
-op_regex = r"^\s*([a-z]{3})(\s+(0x[0-9a-f]{1,7})\s*(,\s*(0x[0-9a-f]{1,7}))*)*\s*$";
-ignore_regex = r"^((\.([a-z]+):\s*)|\s*|\s*;(.*)\s*)$";
-data_regex = r"^\s*\.data\s+\"(.+)\"\s*$";
+inst_regex = r"([a-z]{3})";
+reg_regex = r"(0x[0-9a-f]{1,2})";
+val_regex = r"(0x[0-9a-f]{1,4}|@[_a-z]+)";
+cond_regex = r"(0x[0-9a-f]{1,4}|@[_a-z]+)";
+op_regex = f"^\s*{inst_regex}\s+({reg_regex}(\s*,\s*{val_regex})?)?(\s*,\s*(eq|ne|gt|lt|al))?\s*(;.*)?\s*$";
+ignore_regex = r"^(\s*|\s*;(.*)\s*)$";
+label_regex = r"^\s*(\.([_a-z]+):\s*)\s*$";
+data_regex = r"^\s*\.data\s+(\"(.+)\"|(0x[0-9a-f]{1,8}))\s*$";
 ops = {
 	"nop": 0x00,
 	"inc": 0x01,
@@ -40,25 +45,42 @@ ops = {
 	"mul": 0x05,
 	"div": 0x06,
 	"lri": 0x07,
-	"lrr": 0x08,
-	"lrm": 0x09,
-	"lmi": 0x0a,
-	"lmr": 0x0b,
-	"lmm": 0x0c,
-	"jmp": 0x0d,
-	"jif": 0x0e,
-	"jno": 0x0f,
-	"shl": 0x10,
-	"shr": 0x11,
-	"ior": 0x12,
-	"xor": 0x13,
-	"and": 0x14,
-	"not": 0x15,
-	"out": 0x17,
-	"hlt": 0x18
+	"lrt": 0x08,
+	"lrr": 0x09,
+	"lrc": 0x0a,
+	"lrh": 0x0b,
+	"lrm": 0x0c,
+	"lmc": 0x0d,
+	"lmh": 0x0e,
+	"lmr": 0x0f,
+	"jmp": 0x10,
+	"cmp": 0x11,
+	"shl": 0x12,
+	"shr": 0x13,
+	"ior": 0x14,
+	"xor": 0x15,
+	"and": 0x16,
+	"not": 0x17,
+	"out": 0x18,
+	"inp": 0x19, # Reserved for `inp`.
+	"ret": 0x1a,
+	"hlt": 0x1b
 };
+conds = {
+	"eq": 0b1000,
+	"ne": 0b0100,
+	"gt": 0b0010,
+	"lt": 0b0001,
+	"al": 0b0000
+};
+vtable = dict();
+line_num = 0;
+file_name = "";
+i = 0;
 
+INT16_MAX = 65535;
 INT24_MAX = 16777215;
+INT32_MAX = 4294967295;
 
 RESET = "\033[0m";
 BOLD = "\033[1m";
@@ -68,7 +90,7 @@ def error(msg):
 	return print(f"{BOLD}{ERR}Error:{RESET} {msg}");
 
 def comp_error(msg, code):
-	return error(f"{msg}\n\t{BOLD}{ERR}{code}{RESET}");
+	return print(f"{BOLD}{file_name}:{line_num} {ERR}Error:{RESET} {msg}\n\t{BOLD}{ERR}{code}{RESET}");
 
 def comp(asm):
 	match = re.fullmatch(op_regex, asm);
@@ -76,6 +98,9 @@ def comp(asm):
 	op = 0x00;
 	reg = 0x00;
 	val = 0x00;
+	cond = 0b0000;
+	tmp_reg = "";
+	tmp_val = "";
 
 	if match is None:
 		comp_error("Invalid assembly syntax.", plain);
@@ -88,29 +113,46 @@ def comp(asm):
 		return -1;
 
 	try:
-		reg = int(match.group(3), 16);
-		val = int(match.group(5), 16);
+		tmp_reg = match.group(3);
+		tmp_val = match.group(5);
+		reg = int(tmp_reg, 16);
+		if tmp_val[0] == "@":
+			try:
+				val = vtable[tmp_val[1:]];
+			except (NameError, KeyError):
+				comp_error(f"Invalid label: {BOLD}{tmp_val[1:]}{RESET}.", plain);
+		else:
+			val = int(tmp_val, 16);
 	except (IndexError, TypeError):
 		pass;
 
-	if reg > 7:
-		comp_error(f"Invalid register: {BOLD}{match.group(2)}{RESET}.", plain);
+	try:
+		cond = conds[match.group(7)];
+	except KeyError:
+		pass;
+
+	if reg > 15:
+		comp_error(f"Invalid register: {BOLD}{tmp_reg}{RESET}.", plain);
 		return -1;
 
-	if val > INT24_MAX:
-		comp_error(f"Integer overflow: {BOLD}{val} > INT24_MAX ({INT24_MAX}){RESET}.", plain);
+	if val > INT16_MAX:
+		comp_error(f"Integer overflow: {BOLD}{val} > INT16_MAX ({INT16_MAX}){RESET}.", plain);
 		return -1;
 
-	return (op << 27) | (reg << 24) | val;
+	return (op << 24) | (cond << 20) | (reg << 16) | val;
 
 def main(argc, argv):
+	global line_num;
+	global file_name;
+	global i;
+
 	inp = None;
 	out = None;
-	data_match = None;
+	dl_match = None;
 	data = None;
 
 	try:
-		opts, args = getopt(argv[1:], ":o:", ["output=", "help"]);
+		opts, args = getopt(argv[1:], "o:", ["output=", "help"]);
 	except GetoptError as err:
 		error(f"In option --{err.opt}.");
 		return -1;
@@ -124,13 +166,20 @@ def main(argc, argv):
 			print("  --help\tDisplay this help and exit.");
 			print("  --output=FILE\tPlace the output into <FILE>.");
 			print("  -o FILE\tSame as --output.");
+			print("  -h\t\tSame as --help.");
 			return 0;
 
 	if len(args) < 1:
 		error("No input file.");
 		return -1;
 
-	inp = open(args[0], "r");
+	try:
+		inp = open(args[0], "r");
+		file_name = args[0];
+	except FileNotFoundError:
+		error("Can't open the file.");
+		return -1;
+
 	if out is None:
 		out = open("./a.out", "wb");
 
@@ -138,10 +187,43 @@ def main(argc, argv):
 		if re.fullmatch(ignore_regex, line) is not None:
 			continue;
 		else:
-			data_match = re.fullmatch(data_regex, line);
-			if data_match is not None:
-				data = decode(encode(data_match.group(1), "utf-8", "backslashreplace"), "unicode-escape");
-				out.write(bytes(data, "utf-8"));
+			dl_match = re.fullmatch(data_regex, line);
+			if dl_match is not None:
+				data = decode(encode(dl_match.group(1), "utf-8", "backslashreplace"), "unicode-escape");
+				try:
+					val = int(data, 16);
+					i += 4;
+				except (IndexError, TypeError):
+					i += len(data);
+					pass;
+			else:
+				dl_match = re.fullmatch(label_regex, line);
+				if dl_match is not None:
+					vtable.update({
+						dl_match.group(2): i
+					});
+				else:
+					i += 4;
+
+	inp.seek(0);
+	for line in inp:
+		line_num += 1;
+		if re.fullmatch(ignore_regex, line) is not None:
+			continue;
+		else:
+			dl_match = re.fullmatch(data_regex, line);
+			if dl_match is not None:
+				data = decode(encode(dl_match.group(1), "utf-8", "backslashreplace"), "unicode-escape");
+				try:
+					val = int(data, 16);
+					out.write(struct.pack("!I", val));
+					i += 4;
+				except (IndexError, TypeError):
+					i += len(data);
+					out.write(bytes(data, "utf-8"));
+					pass;
+				continue;
+			elif re.fullmatch(label_regex, line) is not None:
 				continue;
 		compiled = comp(line);
 		if compiled < 0:

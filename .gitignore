@@ -13,3 +13,6 @@ deb/
 # Tests
 a.out
 test.out
+
+# Old stuff
+.old/

@@ -19,12 +19,20 @@
 #  
 #  
 
-all:
+CFLAGS:=-I./include
+
+all: cc
 	mkdir -p ./build/
-	gcc ./src/n2vm.c -o ./build/n2vm
+	gcc ./src/n2vm.c $(CFLAGS) -o ./build/n2vm
+
+cc:
+	re2c ./src/n2cc.re -o ./build/n2cc.c
+	gcc ./build/n2cc.c $(CFLAGS) -o ./build/n2cc
 
 install:
 	cp ./build/n2vm /usr/bin/n2vm
+	cp ./build/n2cc /usr/bin/n2cc
 	cp ./src/n2as.py /usr/bin/n2as
 	chmod a+x /usr/bin/n2vm
+	chmod a+x /usr/bin/n2cc
 	chmod a+x /usr/bin/n2as

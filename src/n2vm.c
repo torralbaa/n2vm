@@ -1,5 +1,5 @@
 /*
- * vm.c
+ * n2vm.c
  * 
  * Copyright 2018-2020 Alvarito050506 <donfrutosgomez@gmail.com>
  * 
@@ -23,90 +23,35 @@
 #include <stdio.h>
 #include <string.h>
 
-#define INT24_MAX 16777215
-#define STRINGIFY(string) #string
+#include <misc.h>
+#include <types.h>
+#include <ops.h>
 
-#define SIMPLE(name, code) \
-int name(unsigned char reg, unsigned int val) \
-{ \
-	unsigned int rt = 0; \
-	fprintf(stderr, "[CPU] " STRINGIFY(name) " 0x%02x, 0x%07x\n", reg, val); \
-	code; \
-	gpr[0x07] += 4; \
-	return (unsigned int)rt; \
-};
-
-#define JUMP(name, code) \
-int name(unsigned char reg, unsigned int val) \
-{ \
-	unsigned int rt = 0; \
-	fprintf(stderr, "[CPU] " STRINGIFY(name) " 0x%02x, 0x%07x\n", reg, val); \
-	code; \
-	return (unsigned int)rt; \
-};
-
-#define IO(name, code) \
-int name(unsigned int val) \
-{ \
-	unsigned int rt = 0; \
-	code; \
-	return (unsigned int)rt; \
-};
-
-typedef int (*op_t)(unsigned char reg, unsigned int val);
-typedef int (*io_t)(unsigned int val);
-
-unsigned char mem[INT24_MAX];
-unsigned int gpr[8];
-op_t ops[32];
-io_t iop[8];
+unsigned int jump = 0;
+unsigned char mem[INT16_MAX];
+unsigned int gpr[16];
+unsigned int flags = 0b0000;
+op_t ops[48];
+op_t iop[8];
 int running = 0;
-
-int int24_gpr_add(unsigned char reg, int val)
-{
-	gpr[reg] += val;
-	if (gpr[reg] > INT24_MAX)
-	{
-		gpr[reg] >>= 8;
-	}
-	return 0;
-}
-
-int int24_gpr_mul(unsigned char reg, int val)
-{
-	gpr[reg] *= val;
-	if (gpr[reg] > INT24_MAX)
-	{
-		gpr[reg] >>= 8;
-	}
-	return 0;
-}
 
 SIMPLE(nop, {});
 
 SIMPLE(inc, {
-	int24_gpr_add(reg, 1);
+	gpr[reg]++;
 });
 
 SIMPLE(dec, {
-	int24_gpr_add(reg, -1);
+	gpr[reg]--;
 });
 
-SIMPLE(add, {
-	int24_gpr_add(reg, val);
-});
+MATH(add, +=);
 
-SIMPLE(sub, {
-	int24_gpr_add(reg, -val);
-});
+MATH(sub, -=);
 
-SIMPLE(mul, {
-	int24_gpr_mul(reg, val);
-});
+MATH(mul, *=);
 
-SIMPLE(div, {
-	int24_gpr_mul(reg, 1 / val);
-});
+MATH(div, /=);
 
 SIMPLE(hlt, {
 	running = 1;
@@ -116,66 +61,84 @@ SIMPLE(lri, {
 	gpr[reg] = val;
 });
 
-SIMPLE(lrr, {
-	unsigned char src_reg = 0;
+SIMPLE(lrt, {
+	gpr[reg] = (val << 16) | gpr[reg];
+});
 
-	src_reg = val << 21;
-	src_reg >>= 21;
-	if (src_reg > 0x07)
-	{
-		fprintf(stderr, "Error: Invalid register.\n");
-		return -1;
-	}
+SIMPLE(lrr, {
+	VAL2REG();
+
 	gpr[reg] = gpr[src_reg];
 });
 
+SIMPLE(lrc, {
+	VAL2REG();
+
+	gpr[reg] = mem[gpr[src_reg]];
+});
+
+SIMPLE(lrh, {
+	unsigned short addr = 0;
+
+	VAL2REG();
+
+	addr = gpr[src_reg];
+	gpr[reg] = (mem[addr + 1] << 8) | mem[addr];
+});
+
 SIMPLE(lrm, {
-	gpr[reg] = mem[val];
+	unsigned short addr = 0;
+
+	VAL2REG();
+
+	gpr[reg] = (mem[addr + 3] << 24) | (mem[addr + 2] << 16) | (mem[addr + 1] << 8) | mem[addr];
 });
 
-SIMPLE(lmi, {
-	mem[gpr[reg]] = val;
-});
+SIMPLE(lmc, {
+	VAL2REG();
 
-SIMPLE(lmr, {
-	unsigned char src_reg = 0;
-
-	src_reg = val << 21;
-	src_reg >>= 21;
-	if (src_reg > 0x07)
-	{
-		fprintf(stderr, "Error: Invalid register.\n");
-		return -1;
-	}
 	mem[gpr[reg]] = gpr[src_reg];
 });
 
-SIMPLE(lmm, {
-	mem[gpr[reg]] = mem[val];
+SIMPLE(lmh, {
+	unsigned short addr = gpr[reg];
+
+	VAL2REG();
+
+	mem[addr] = gpr[src_reg] >> 8;
+	mem[addr + 1] = gpr[src_reg];
+});
+
+SIMPLE(lmr, {
+	unsigned short addr = gpr[reg];
+
+	VAL2REG();
+
+	mem[addr] = gpr[src_reg] >> 24;
+	mem[addr + 1] = gpr[src_reg] >> 16;
+	mem[addr + 2] = gpr[src_reg] >> 8;
+	mem[addr + 3] = gpr[src_reg];
 });
 
 JUMP(jmp, {
-	gpr[0x07] = val;
+	jump = gpr[0x0f] + 4;
+	gpr[0x0f] = gpr[reg];
 });
 
-JUMP(jif, {
-	if (gpr[reg] != 0x00)
-	{
-		gpr[0x07] = val;
-	} else
-	{
-		gpr[0x07] += 4;
-	}
+JUMP(ret, {
+	gpr[0x0f] = jump;
+	jump = 0;
 });
 
-JUMP(jno, {
-	if (gpr[reg] == 0x00)
-	{
-		gpr[0x07] = val;
-	} else
-	{
-		gpr[0x07] += 4;
-	}
+SIMPLE(cmp, {
+	unsigned int src_val;
+	unsigned int dst_val;
+
+	VAL2REG();
+
+	src_val = gpr[src_reg];
+	dst_val = gpr[reg];
+	flags = ((dst_val == src_val) << 3) | ((dst_val != src_val) << 2) | ((dst_val > src_val) << 1) | (dst_val < src_val);
 });
 
 SIMPLE(shl, {
@@ -210,20 +173,23 @@ SIMPLE(out, {
 		fprintf(stderr, "Error: Invalid I/O port.\n");
 		return -1;
 	}
-	iop[port](val);
+	iop[port](reg, val);
 });
 
 IO(vid, {
-	printf("[VID] %s", mem + val);
+	VAL2REG();
+
+	printf("[VID] %s", mem + gpr[src_reg]);
 });
 
 int main(int argc, char* argv[])
 {
-	int i = 0;
+	unsigned int* i = &gpr[0x0f];
 	unsigned int sz = 0;
 	unsigned int val = 0;
 	unsigned char reg = 0;
 	unsigned char op = 0;
+	unsigned char cond = 0;
 	FILE* fd;
 
 	if (argc < 2)
@@ -243,61 +209,87 @@ int main(int argc, char* argv[])
 	fd = fopen(argv[1], "rb");
 	if (fd == NULL)
 	{
-		fprintf(stderr, "Error: Can't open the file.\n");
+		ERROR("Can't open the file.\n");
 		return -1;
 	}
 
 	sz = fread(mem, sizeof(unsigned char), INT24_MAX, fd);
 
 	ops[0x00] = nop;
+
 	ops[0x01] = inc;
 	ops[0x02] = dec;
+
 	ops[0x03] = add;
 	ops[0x04] = sub;
 	ops[0x05] = mul;
 	ops[0x06] = div;
+
 	ops[0x07] = lri;
-	ops[0x08] = lrr;
-	ops[0x09] = lrm;
-	ops[0x0a] = lmi;
-	ops[0x0b] = lmr;
-	ops[0x0c] = lmm;
-	ops[0x0d] = jmp;
-	ops[0x0e] = jif;
-	ops[0x0f] = jno;
-	ops[0x10] = shl;
-	ops[0x11] = shr;
-	ops[0x12] = ior;
-	ops[0x13] = xor;
-	ops[0x14] = and;
-	ops[0x15] = not;
-	ops[0x17] = out;
-	ops[0x18] = hlt;
+	ops[0x08] = lrt;
+	ops[0x09] = lrr;
+
+	ops[0x0a] = lrc;
+	ops[0x0b] = lrh;
+	ops[0x0c] = lrm;
+
+	ops[0x0d] = lmc;
+	ops[0x0e] = lmh;
+	ops[0x0f] = lmr;
+
+	ops[0x10] = jmp;
+	ops[0x11] = cmp;
+
+	ops[0x12] = shl;
+	ops[0x13] = shr;
+	ops[0x14] = ior;
+	ops[0x15] = xor;
+	ops[0x16] = and;
+	ops[0x17] = not;
+
+	ops[0x18] = out;
+	ops[0x19] = nop; /* Reserved for `inp`. */
+
+	ops[0x1a] = ret;
+	ops[0x1b] = hlt;
 
 	iop[0x00] = vid;
 
-	while (running == 0 && gpr[0x07] < sz && gpr[0x07] < INT24_MAX)
+	while (running == 0 && gpr[0x0f] < sz && gpr[0x0f] < INT16_MAX)
 	{
-		i = gpr[0x07];
-		op = mem[i] >> 3;
-		reg = (mem[i] << 5);
-		reg >>= 5;
-		val = (mem[i + 1] << 16) | (mem[i + 2] << 8) | mem[i + 3];
+		op = mem[*i];
+		cond = (mem[*i + 1] >> 4);
+		reg = (mem[*i + 1] << 4);
+		reg >>= 4;
+		val = (mem[*i + 2] << 8) | mem[*i + 3];
 
-		if (op > 0x18)
+#ifdef DEBUG
+		printf("Opcode: 0x%02x\n", op);
+		printf("Conditions: 0x%02x\n", cond);
+		printf("Register: 0x%02x\n", reg);
+		printf("Value: 0x%04x\n", val);
+#endif
+
+		if (op > 0x21)
 		{
 			fprintf(stderr, "Error: Illegal instruction.\n");
 			return -1;
 		}
-		if (reg > 0x07)
+		if (reg > 0x0f)
 		{
 			fprintf(stderr, "Error: Invalid register.\n");
 			return -1;
 		}
 
-		if (ops[op](reg, val) != 0)
+		if (FLAGS(cond))
 		{
-			return -1;
+			if (ops[op](reg, val) != 0)
+			{
+				return -1;
+			}
+		} else
+		{
+			gpr[0x0f] += 4;
 		}
 	}
 	fclose(fd);
