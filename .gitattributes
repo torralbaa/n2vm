@@ -1,6 +1,13 @@
 # For some reason, GitHub thinks that .h files are C++ files by default :shrug:
-*.c text diff=c
-*.h text diff=c
+*.c text diff=C
+*.h text diff=C
+*.c linguist-language=C
+*.h linguist-language=C
 
 # Aaaand let's pretty print .n2 files
-*.n2 text diff=c
+*.n2 text diff=C
+*.n2 linguist-language=C
+
+# CRLF conversion
+* eol=LF
+* text=auto
