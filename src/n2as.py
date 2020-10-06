@@ -30,11 +30,11 @@ from codecs import encode, decode
 base_regex = r"\s*(.*)\s*";
 inst_regex = r"([a-z]{3})";
 reg_regex = r"(0x[0-9a-f]{1,2})";
-val_regex = r"(0x[0-9a-f]{1,4}|@[_a-z]+)";
-cond_regex = r"(0x[0-9a-f]{1,4}|@[_a-z]+)";
-op_regex = f"^\s*{inst_regex}\s+({reg_regex}(\s*,\s*{val_regex})?)?(\s*,\s*(eq|ne|gt|lt|al))?\s*(;.*)?\s*$";
+val_regex = r"(0x[0-9a-f]{1,4}|@[_a-z][_a-z0-9]*)";
+cond_regex = r"(0x[0-9a-f]{1,4}|@[_a-z][_a-z0-9]*)";
+op_regex = f"^\s*{inst_regex}\s+({reg_regex}(\s*,\s*{val_regex})?)?(\s*!\s*(eq|ne|gt|lt|al))?\s*(;.*)?\s*$";
 ignore_regex = r"^(\s*|\s*;(.*)\s*)$";
-label_regex = r"^\s*(\.([_a-z]+):\s*)\s*$";
+label_regex = r"^\s*(\.([_a-z][_a-z0-9]*):\s*)\s*$";
 data_regex = r"^\s*\.data\s+(\"(.+)\"|(0x[0-9a-f]{1,8}))\s*$";
 ops = {
 	"nop": 0x00,
@@ -63,15 +63,16 @@ ops = {
 	"not": 0x17,
 	"out": 0x18,
 	"inp": 0x19, # Reserved for `inp`.
-	"ret": 0x1a,
-	"hlt": 0x1b
+	"sys": 0x1a,
+	"ret": 0x1b,
+	"hlt": 0x1c
 };
 conds = {
+	"al": 0b0000,
 	"eq": 0b1000,
 	"ne": 0b0100,
 	"gt": 0b0010,
-	"lt": 0b0001,
-	"al": 0b0000
+	"lt": 0b0001
 };
 vtable = dict();
 line_num = 0;
@@ -104,13 +105,13 @@ def comp(asm):
 
 	if match is None:
 		comp_error("Invalid assembly syntax.", plain);
-		return -1;
+		return (None, -1);
 
 	try:
 		op = ops[match.group(1)];
 	except:
 		comp_error(f"Invalid instruction: {BOLD}{match.group(1)}{RESET}.", plain);
-		return -1;
+		return (None, -1);
 
 	try:
 		tmp_reg = match.group(3);
@@ -121,6 +122,7 @@ def comp(asm):
 				val = vtable[tmp_val[1:]];
 			except (NameError, KeyError):
 				comp_error(f"Invalid label: {BOLD}{tmp_val[1:]}{RESET}.", plain);
+				return (None, -1);
 		else:
 			val = int(tmp_val, 16);
 	except (IndexError, TypeError):
@@ -133,13 +135,13 @@ def comp(asm):
 
 	if reg > 15:
 		comp_error(f"Invalid register: {BOLD}{tmp_reg}{RESET}.", plain);
-		return -1;
+		return (None, -1);
 
 	if val > INT16_MAX:
 		comp_error(f"Integer overflow: {BOLD}{val} > INT16_MAX ({INT16_MAX}){RESET}.", plain);
-		return -1;
+		return (None, -1);
 
-	return (op << 24) | (cond << 20) | (reg << 16) | val;
+	return (struct.pack(">H", (op << 8) | (cond << 4) | reg) + struct.pack("<H", val), 0);
 
 def main(argc, argv):
 	global line_num;
@@ -193,8 +195,8 @@ def main(argc, argv):
 				try:
 					val = int(data, 16);
 					i += 4;
-				except (IndexError, TypeError):
-					i += len(data);
+				except (IndexError, TypeError, ValueError):
+					i += len(data) - 2;
 					pass;
 			else:
 				dl_match = re.fullmatch(label_regex, line);
@@ -218,19 +220,19 @@ def main(argc, argv):
 					val = int(data, 16);
 					out.write(struct.pack("!I", val));
 					i += 4;
-				except (IndexError, TypeError):
-					i += len(data);
-					out.write(bytes(data, "utf-8"));
+				except (IndexError, TypeError, ValueError):
+					i += len(data) - 2;
+					out.write(bytes(data[1:-1], "utf-8"));
 					pass;
 				continue;
 			elif re.fullmatch(label_regex, line) is not None:
 				continue;
-		compiled = comp(line);
-		if compiled < 0:
+		compiled, errno = comp(line);
+		if errno < 0:
 			inp.close();
 			out.close();
 			return -1;
-		out.write(struct.pack("!I", compiled));
+		out.write(compiled);
 
 	inp.close();
 	out.close();

@@ -12,7 +12,7 @@ deb/
 
 # Tests
 a.out
-test.out
+test*.out
 
 # Old stuff
 .old/

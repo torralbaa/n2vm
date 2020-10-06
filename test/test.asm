@@ -1,9 +1,11 @@
 ; Comment!
 
 .main:
+	lri 0x01, @hello_world
 	lri 0x00, 0x00
-	out 0x00, @hello_world
+	out 0x00, 0x01
+	lri 0x0e, 0x00
 	hlt
 
 .hello_world:
-	.data "Hello!\n\x00"
+	.data "Hello World!\n\x00"

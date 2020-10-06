@@ -23,15 +23,18 @@
 #ifndef TYPES_H
 #define TYPES_H
 
-typedef int (*op_t)(unsigned char reg, unsigned short val);
+#ifndef N2CC
+	#include <misc.h>
+#endif /* N2CC */
 
 typedef enum token_t {
 	END,
 	VAR,
 	NAME,
+	REG,
 	ASSIGN,
 	INT, 
-	STR,
+	CSTR,
 	SEMICOLON,
 	RETURN,
 	ASM,
@@ -40,10 +43,23 @@ typedef enum token_t {
 	RBR,
 	LPA,
 	RPA,
+	CALL,
+	COMMA,
 	ANY
 } token_t;
 
+typedef enum assign_t {
+	PADDING,
+	RR, /* Register in Register */
+	RI, /* Immediate in Register */
+	RA, /* Address in Register */
+	AR, /* Register in Address*/
+	AI, /* Immediate in Address */
+	AA, /* Address in Address */
+} assign_t;
+
 typedef enum actions_t {
+	PREPROC,
 	COMPILE,
 	ASSEMBLE,
 	OPTIMIZE
@@ -63,6 +79,32 @@ typedef struct label_t {
 	char* name;
 	char* val;
 	token_t type;
+	assign_t assign;
 } label_t;
+
+#ifndef N2CC
+	typedef struct n2vm_t n2vm_t;
+	typedef int (*op_t)(n2vm_t* vm, unsigned char reg, unsigned short val);
+
+	typedef struct n2vm_t {
+		unsigned char* mem;
+		unsigned int gpr[16];
+		unsigned int* stack;
+		unsigned int* sys_tab;
+		unsigned int flags;
+		int running;
+		int stc;
+		int mem_sz;
+		int stk_sz;
+		int sys_sz;
+		op_t ios[8];
+	} n2vm_t;
+#endif /* N2CC */
+
+typedef enum pre_token_t {
+	FILL,
+	HASH,
+	POTENTIAL
+} pre_token_t;
 
 #endif /* TYPES_H */

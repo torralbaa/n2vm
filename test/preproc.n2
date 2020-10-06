@@ -1,0 +1,13 @@
+/*
+ * Test preprocessor - Not avaiable yet.
+ * 
+ */
+
+#define ABC
+
+var abc = ABC;
+
+func main
+{
+	return 0x00;
+}

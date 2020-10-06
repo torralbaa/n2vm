@@ -21,28 +21,25 @@
  */
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
+#include <errno.h>
 
 #include <misc.h>
 #include <types.h>
+#include <proto.h>
 #include <ops.h>
 
-unsigned int jump = 0;
-unsigned char mem[INT16_MAX];
-unsigned int gpr[16];
-unsigned int flags = 0b0000;
 op_t ops[48];
-op_t iop[8];
-int running = 0;
 
 SIMPLE(nop, {});
 
 SIMPLE(inc, {
-	gpr[reg]++;
+	vm->gpr[reg]++;
 });
 
 SIMPLE(dec, {
-	gpr[reg]--;
+	vm->gpr[reg]--;
 });
 
 MATH(add, +=);
@@ -54,80 +51,70 @@ MATH(mul, *=);
 MATH(div, /=);
 
 SIMPLE(hlt, {
-	running = 1;
+	vm->running = 1;
 });
 
 SIMPLE(lri, {
-	gpr[reg] = val;
+	vm->gpr[reg] = SHR((unsigned char*)&val);
 });
 
 SIMPLE(lrt, {
-	gpr[reg] = (val << 16) | gpr[reg];
+	vm->gpr[reg] = (SHR((unsigned char*)&val) << 16) | vm->gpr[reg];
 });
 
 SIMPLE(lrr, {
 	VAL2REG();
 
-	gpr[reg] = gpr[src_reg];
+	vm->gpr[reg] = vm->gpr[src_reg];
 });
 
-SIMPLE(lrc, {
-	VAL2REG();
-
-	gpr[reg] = mem[gpr[src_reg]];
+MEM(lrc, vm->gpr[src_reg], 0, {
+	vm->gpr[reg] = vm->mem[addr];
 });
 
-SIMPLE(lrh, {
-	unsigned short addr = 0;
-
-	VAL2REG();
-
-	addr = gpr[src_reg];
-	gpr[reg] = (mem[addr + 1] << 8) | mem[addr];
+MEM(lrh, vm->gpr[reg], 1, {
+	vm->gpr[reg] = SHR(vm->mem + addr);
 });
 
-SIMPLE(lrm, {
-	unsigned short addr = 0;
-
-	VAL2REG();
-
-	gpr[reg] = (mem[addr + 3] << 24) | (mem[addr + 2] << 16) | (mem[addr + 1] << 8) | mem[addr];
+MEM(lrm, vm->gpr[reg], 3, {
+	vm->gpr[reg] = INT(vm->mem + addr);
 });
 
-SIMPLE(lmc, {
-	VAL2REG();
-
-	mem[gpr[reg]] = gpr[src_reg];
+MEM(lmc, vm->gpr[reg], 0, {
+	vm->mem[addr] = CHR(vm->gpr[src_reg], 0);
 });
 
-SIMPLE(lmh, {
-	unsigned short addr = gpr[reg];
-
-	VAL2REG();
-
-	mem[addr] = gpr[src_reg] >> 8;
-	mem[addr + 1] = gpr[src_reg];
+MEM(lmh, vm->gpr[reg], 1, {
+	vm->mem[addr] = CHR(vm->gpr[src_reg], 8);
+	vm->mem[addr + 1] = CHR(vm->gpr[src_reg], 0);
 });
 
-SIMPLE(lmr, {
-	unsigned short addr = gpr[reg];
-
-	VAL2REG();
-
-	mem[addr] = gpr[src_reg] >> 24;
-	mem[addr + 1] = gpr[src_reg] >> 16;
-	mem[addr + 2] = gpr[src_reg] >> 8;
-	mem[addr + 3] = gpr[src_reg];
+MEM(lmr, vm->gpr[reg], 3, {
+	vm->mem[addr] = CHR(vm->gpr[src_reg], 24);
+	vm->mem[addr + 1] = CHR(vm->gpr[src_reg], 16);
+	vm->mem[addr + 2] = CHR(vm->gpr[src_reg], 8);
+	vm->mem[addr + 3] = CHR(vm->gpr[src_reg], 0);
 });
 
 JUMP(jmp, {
-	jump = gpr[0x0f] + 4;
-	gpr[0x0f] = gpr[reg];
+	if (vm->stc >= vm->stk_sz)
+	{
+		ERROR("Maximum call stack size exceeded.\n");
+		return -1;
+	}
+	vm->stack[vm->stc++] = PC + 4;
+	PC = vm->gpr[reg];
 });
 
 JUMP(ret, {
-	gpr[0x0f] = jump;
-	jump = 0;
+	if (vm->stc <= 0)
+	{
+		PC = 0x00;
+		vm->stc = 0x00;
+	} else
+	{
+		PC = vm->stack[--vm->stc];
+	}
 });
 
 SIMPLE(cmp, {
@@ -136,94 +123,108 @@ SIMPLE(cmp, {
 
 	VAL2REG();
 
-	src_val = gpr[src_reg];
-	dst_val = gpr[reg];
-	flags = ((dst_val == src_val) << 3) | ((dst_val != src_val) << 2) | ((dst_val > src_val) << 1) | (dst_val < src_val);
+	src_val = vm->gpr[src_reg];
+	dst_val = vm->gpr[reg];
+	vm->flags = ((dst_val == src_val) << 3) | ((dst_val != src_val) << 2) | ((dst_val > src_val) << 1) | (dst_val < src_val);
 });
 
 SIMPLE(shl, {
-	gpr[reg] <<= val;
+	vm->gpr[reg] <<= val;
 });
 
 SIMPLE(shr, {
-	gpr[reg] >>= val;
+	vm->gpr[reg] >>= val;
 });
 
 SIMPLE(ior, {
-	gpr[reg] |= val;
+	vm->gpr[reg] |= val;
 });
 
 SIMPLE(xor, {
-	gpr[reg] ^= val;
+	vm->gpr[reg] ^= val;
 });
 
 SIMPLE(and, {
-	gpr[reg] &= val;
+	vm->gpr[reg] &= val;
 });
 
 SIMPLE(not, {
-	gpr[reg] = ~gpr[reg];
+	vm->gpr[reg] = ~vm->gpr[reg];
 });
 
 SIMPLE(out, {
-	unsigned int port = gpr[reg];
+	unsigned int port = vm->gpr[reg];
 
 	if (port > 0x00)
 	{
-		fprintf(stderr, "Error: Invalid I/O port.\n");
+		ERROR("Invalid I/O port.\n");
 		return -1;
 	}
-	iop[port](reg, val);
+	vm->ios[port](vm, reg, val);
 });
 
 IO(vid, {
 	VAL2REG();
 
-	printf("[VID] %s", mem + gpr[src_reg]);
+	printf("[VID] %s", vm->mem + vm->gpr[src_reg]);
 });
 
-int main(int argc, char* argv[])
+JUMP(sys, {
+	unsigned int base;
+
+	if (reg >= vm->sys_sz)
+	{
+		ERROR("Invalid software interrupt.\n");
+		return -1;
+	}
+	if (vm->stc >= vm->stk_sz)
+	{
+		ERROR("Maximum call stack size exceeded.\n");
+		return -1;
+	}
+	base = vm->mem_sz - vm->stk_sz * 4 - vm->sys_sz * 4 + (reg == 0 ? 0 : reg * 4);
+	vm->stack[vm->stc++] = PC + 4;
+	PC = INT(vm->mem + base);
+});
+
+unsigned char get_char(int num, int pos)
 {
-	unsigned int* i = &gpr[0x0f];
-	unsigned int sz = 0;
-	unsigned int val = 0;
-	unsigned char reg = 0;
-	unsigned char op = 0;
-	unsigned char cond = 0;
-	FILE* fd;
+	return (char)(255 & (num >> pos));
+}
 
-	if (argc < 2)
-	{
-		fprintf(stderr, "Error: No file specified.\n");
-		return -1;
-	}
+unsigned short get_short(char* buff)
+{
+	unsigned short tmp = 0;
+	unsigned char* ptr = (unsigned char*)&tmp;
 
-	if (strcmp("--help", argv[1]) == 0 || strcmp("-h", argv[1]) == 0)
-	{
-		printf("Usage: %s [options] file\n\n", argv[0]);
-		printf("Options:\n");
-		printf("  --help\tDisplay this help and exit.\n");
-		return 0;
-	}
+	ptr[0] = buff[1];
+	ptr[1] = buff[0];
+	return tmp;
+}
 
-	fd = fopen(argv[1], "rb");
-	if (fd == NULL)
-	{
-		ERROR("Can't open the file.\n");
-		return -1;
-	}
+unsigned int get_int(char* buff)
+{
+	unsigned int tmp = 0;
+	unsigned char* ptr = (unsigned char*)&tmp;
 
-	sz = fread(mem, sizeof(unsigned char), INT24_MAX, fd);
+	ptr[0] = buff[3];
+	ptr[1] = buff[2];
+	ptr[2] = buff[1];
+	ptr[3] = buff[0];
+	return tmp;
+}
 
+int n2vm_init()
+{
 	ops[0x00] = nop;
 
 	ops[0x01] = inc;
 	ops[0x02] = dec;
 
-	ops[0x03] = add;
-	ops[0x04] = sub;
-	ops[0x05] = mul;
-	ops[0x06] = div;
+	ops[0x03] = add_op;
+	ops[0x04] = sub_op;
+	ops[0x05] = mul_op;
+	ops[0x06] = div_op;
 
 	ops[0x07] = lri;
 	ops[0x08] = lrt;
@@ -249,19 +250,69 @@ int main(int argc, char* argv[])
 
 	ops[0x18] = out;
 	ops[0x19] = nop; /* Reserved for `inp`. */
+	ops[0x1a] = sys;
 
-	ops[0x1a] = ret;
-	ops[0x1b] = hlt;
+	ops[0x1b] = ret;
+	ops[0x1c] = hlt;
 
-	iop[0x00] = vid;
+	return 0;
+}
 
-	while (running == 0 && gpr[0x0f] < sz && gpr[0x0f] < INT16_MAX)
+n2vm_t* n2vm_new(int mem_min, int mem_max, int stack_max, int sys_max)
+{
+	int tmp_div = 2;
+	int tmp_sz = mem_max;
+	unsigned char* tmp_mem;
+	n2vm_t* vm;
+
+	vm = (n2vm_t*)malloc(sizeof(n2vm_t) + 1);
+
+	tmp_mem = malloc(mem_max);
+	while (tmp_mem == NULL && tmp_div < 5)
 	{
-		op = mem[*i];
-		cond = (mem[*i + 1] >> 4);
-		reg = (mem[*i + 1] << 4);
+		tmp_sz = mem_max / ++tmp_div;
+		tmp_mem = malloc(tmp_sz);
+	}
+
+	if (tmp_mem == NULL)
+	{
+		tmp_sz = mem_min;
+		tmp_mem = malloc(mem_min);
+		if (tmp_mem == NULL)
+		{
+			ERROR("Failed to allocate enough memory.\n");
+			errno = ENOMEM;
+			return NULL;
+		}
+	}
+
+	vm->mem = tmp_mem;
+	vm->mem_sz = tmp_sz;
+	vm->stk_sz = stack_max;
+	vm->sys_sz = sys_max;
+	vm->stack = (unsigned int*)(tmp_mem + tmp_sz - stack_max * 4);
+	vm->sys_tab = (unsigned int*)(vm->stack - sys_max * 4);
+	vm->flags = 0b0000;
+	vm->running = 0;
+	vm->stc = 0;
+	vm->ios[0] = vid;
+	return vm;
+}
+
+int n2vm_run(n2vm_t* vm)
+{
+	unsigned int val = 0;
+	unsigned char reg = 0;
+	unsigned char op = 0;
+	unsigned char cond = 0;
+
+	while (vm->running == 0 && PC < vm->mem_sz)
+	{
+		op = vm->mem[PC];
+		cond = (vm->mem[PC + 1] >> 4);
+		reg = (vm->mem[PC + 1] << 4);
 		reg >>= 4;
-		val = (mem[*i + 2] << 8) | mem[*i + 3];
+		val = (vm->mem[PC + 2] << 8) | vm->mem[PC + 3];
 
 #ifdef DEBUG
 		printf("Opcode: 0x%02x\n", op);
@@ -272,26 +323,33 @@ int main(int argc, char* argv[])
 
 		if (op > 0x21)
 		{
-			fprintf(stderr, "Error: Illegal instruction.\n");
+			ERROR("Error: Illegal instruction.\n");
 			return -1;
 		}
 		if (reg > 0x0f)
 		{
-			fprintf(stderr, "Error: Invalid register.\n");
+			ERROR("Error: Invalid register.\n");
 			return -1;
 		}
 
 		if (FLAGS(cond))
 		{
-			if (ops[op](reg, val) != 0)
+			if (ops[op](vm, reg, val) != 0)
 			{
 				return -1;
 			}
 		} else
 		{
-			gpr[0x0f] += 4;
+			PC += 4;
 		}
 	}
-	fclose(fd);
+	PC = 0x00;
+	return 0;
+}
+
+int n2vm_clean(n2vm_t* vm)
+{
+	free(vm->mem);
+	free(vm);
 	return 0;
 }

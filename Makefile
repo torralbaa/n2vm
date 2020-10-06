@@ -19,20 +19,37 @@
 #  
 #  
 
-CFLAGS:=-I./include
+CFLAGS:=-I./include -DN2VM_LIB_INT -O3 -fPIC -DPIC
+CC_CFLAGS:=-I./mcpp -DN2CC -DHAVE_CONFIG_H
 
-all: cc
-	mkdir -p ./build/
-	gcc ./src/n2vm.c $(CFLAGS) -o ./build/n2vm
+all: cc dir lib
+	gcc ./src/n2vm.c ./src/main.c $(CFLAGS) $(EXTRA_CFLAGS) -DMAIN -o ./build/n2vm
 
-cc:
+cc: dir
 	re2c ./src/n2cc.re -o ./build/n2cc.c
-	gcc ./build/n2cc.c $(CFLAGS) -o ./build/n2cc
+	gcc ./build/n2cc.c $(CFLAGS) $(CC_CFLAGS) $(EXTRA_CFLAGS) -o ./build/n2cc
 
-install:
+lib: dir
+	gcc -shared -fPIC ./src/n2vm.c $(CFLAGS) $(EXTRA_CFLAGS) -o ./build/libn2vm.so
+
+test: all
+	./build/n2cc -o ./build/n2_test ./test/test.n2
+	./build/n2as -o ./build/asm_test ./test/test.asm
+	./build/n2as -o ./build/base ./test/base.asm
+	./build/n2as -o ./build/emp ./test/emp.asm
+	cat ./build/base ./build/emp > ./build/os
+
+dir:
+	mkdir -p ./build/
+
+install: all
 	cp ./build/n2vm /usr/bin/n2vm
 	cp ./build/n2cc /usr/bin/n2cc
 	cp ./src/n2as.py /usr/bin/n2as
+	cp ./build/libn2vm.so /usr/lib/libn2vm.so
+	mkdir -p /usr/include/n2vm/
+	cp -r ./include/. /usr/include/n2vm/
+	chmod 0755 /usr/lib/libn2vm.so
 	chmod a+x /usr/bin/n2vm
 	chmod a+x /usr/bin/n2cc
 	chmod a+x /usr/bin/n2as

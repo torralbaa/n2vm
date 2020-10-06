@@ -1,4 +1,5 @@
-var abc = 0x01;
+var abc = "Hello World!\n\x00";
+var i = 0x01;
 
 /*
  * Comment!
@@ -7,6 +8,15 @@ var abc = 0x01;
 
 func main
 {
-	abc = 0x4000000; // Single-line comment!
+	i = 0xffff7f; // Single-line comment!
+	$r1 = abc;
+	call print;
+	return 0x00;
+}
+
+func print
+{
+	asm "lri 0x00, 0x00";
+	asm "out 0x00, 0x01"; // $string
 	return 0x00;
 }

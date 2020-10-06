@@ -22,28 +22,29 @@
 
 #ifndef OPS_H
 #define OPS_H
+#include <misc.h>
 
 #define SIMPLE(name, code) \
-int name(unsigned char reg, unsigned short val) \
+int name(n2vm_t* vm, unsigned char reg, unsigned short val) \
 { \
 	int rt = 0; \
-	fprintf(stderr, "[CPU] " STRINGIFY(name) " 0x%02x, 0x%04x\n", reg, val); \
+	LOG(name, reg, val); \
 	code; \
-	gpr[0x0f] += 4; \
+	vm->gpr[0x0f] += 4; \
 	return rt; \
 };
 
 #define JUMP(name, code) \
-int name(unsigned char reg, unsigned short val) \
+int name(n2vm_t* vm, unsigned char reg, unsigned short val) \
 { \
 	int rt = 0; \
-	fprintf(stderr, "[CPU] " STRINGIFY(name) " 0x%02x, 0x%04x\n", reg, val); \
+	LOG(name, reg, val); \
 	code; \
 	return rt; \
 };
 
 #define IO(name, code) \
-int name(unsigned char reg, unsigned short val) \
+int name(n2vm_t* vm, unsigned char reg, unsigned short val) \
 { \
 	int rt = 0; \
 	code; \
@@ -51,29 +52,47 @@ int name(unsigned char reg, unsigned short val) \
 };
 
 #define MATH(name, operation) \
-int name(unsigned char reg, unsigned short val) \
+int name ## _op(n2vm_t* vm, unsigned char reg, unsigned short val) \
 { \
-	unsigned int src_reg = 0; \
-	src_reg = val << 12; \
+	unsigned int src_reg = SHR((unsigned char*)&val);; \
+	src_reg = src_reg << 12; \
 	src_reg >>= 12; \
-	fprintf(stderr, "[CPU] " STRINGIFY(name) " 0x%02x, 0x%02x\n", reg, src_reg); \
+	LOG_MATH(name, reg, src_reg); \
 	if (src_reg > 0x0f) \
 	{ \
-		fprintf(stderr, "Error: Invalid register.\n"); \
+		ERROR("Invalid register.\n"); \
 		return -1; \
 	} \
-	gpr[reg] operation gpr[src_reg]; \
-	gpr[0x0f] += 4; \
+	vm->gpr[reg] operation vm->gpr[src_reg]; \
+	vm->gpr[0x0f] += 4; \
 	return 0; \
 };
 
+#define MEM(name, address, extra, code) \
+int name(n2vm_t* vm, unsigned char reg, unsigned short val) \
+{ \
+	int rt = 0; \
+	unsigned int addr; \
+	LOG(name, reg, val); \
+	VAL2REG(); \
+	addr = address; \
+	if (addr + extra >= vm->mem_sz) \
+	{ \
+		ERROR("Invalid address.\n"); \
+		return -1; \
+	} \
+	code; \
+	vm->gpr[0x0f] += 4; \
+	return rt; \
+};
+
 #define VAL2REG() \
-	unsigned char src_reg = 0; \
-	src_reg = val << 12; \
+	unsigned short src_reg = SHR((unsigned char*)&val); \
+	src_reg = src_reg << 12; \
 	src_reg >>= 12; \
 	if (src_reg > 0x10) \
 	{ \
-		fprintf(stderr, "Error: Invalid register.\n"); \
+		ERROR("Invalid register.\n"); \
 		return -1; \
 	} \
 
