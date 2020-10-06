@@ -22,7 +22,12 @@
 
 #ifndef PROTO_H
 #define PROTO_H
-#include <types.h>
+
+#ifdef N2VM_LIB_INT
+	#include <types.h>
+#else
+	#include <n2vm/types.h>
+#endif /* N2VM_LIB_INT */
 
 #ifdef N2VM_LIB_INT
 	unsigned char get_char(int num, int pos);

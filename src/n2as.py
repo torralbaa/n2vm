@@ -63,9 +63,10 @@ ops = {
 	"not": 0x17,
 	"out": 0x18,
 	"inp": 0x19, # Reserved for `inp`.
-	"sys": 0x1a,
-	"ret": 0x1b,
-	"hlt": 0x1c
+	"cll": 0x1a,
+	"sys": 0x1b,
+	"ret": 0x1c,
+	"hlt": 0x1d
 };
 conds = {
 	"al": 0b0000,
@@ -86,6 +87,9 @@ INT32_MAX = 4294967295;
 RESET = "\033[0m";
 BOLD = "\033[1m";
 ERR = "\033[91m";
+
+def basename(path):
+	return path.split("/")[-1];
 
 def error(msg):
 	return print(f"{BOLD}{ERR}Error:{RESET} {msg}");
@@ -163,7 +167,7 @@ def main(argc, argv):
 		if opt in ("-o", "--output"):
 			out = open(arg, "wb");
 		elif opt == "--help":
-			print(f"Usage: {sys.argv[0]} [options] file\n");
+			print(f"Usage: {basename(sys.argv[0])} [options] file\n");
 			print("Options:");
 			print("  --help\tDisplay this help and exit.");
 			print("  --output=FILE\tPlace the output into <FILE>.");

@@ -165,7 +165,7 @@ int write_code(label_t label, char* code)
 	{
 		strcat(code, "\tlri 0x00, @");
 		strcat(code, label.name);
-		strcat(code, "\n\tjmp 0x00\n");
+		strcat(code, "\n\tcll 0x00\n");
 	} else if (label.assign == RR)
 	{
 		sprintf(code + strlen(code), "\tlrr 0x%02x, 0x%02x\n", atoi(label.name + 2), atoi(label.val + 2));
@@ -200,7 +200,7 @@ int compile(char* inp, char* file, char* code, char* data)
 
 	func_any = VAR | NAME | REG | SEMICOLON | RETURN | ASM | LBR | RBR | CALL;
 
-	strcpy(code, ".start:\n\tlri 0x00, @main\n\tjmp 0x00\n\thlt\n\n");
+	strcpy(code, ".start:\n\tlri 0x00, @main\n\tcll 0x00\n\thlt\n\n");
 
 	tok = lex(&lexer);
 	while (tok)
@@ -427,7 +427,7 @@ int main(int argc, char* argv[])
 				printf("Options:\n");
 				printf("  --help\tDisplay this help and exit.\n");
 				printf("  --output=FILE\tPlace the output into <FILE>.\n");
-				printf("  --no-preproc\tNo preprocess.\n");
+				printf("  --no-preproc\tDo not preprocess.\n");
 				printf("  -o FILE\tSame as --output.\n");
 				printf("  -h\t\tSame as --help.\n");
 				printf("  -n\t\tSame as --no-preproc.\n");

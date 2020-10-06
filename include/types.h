@@ -24,7 +24,11 @@
 #define TYPES_H
 
 #ifndef N2CC
-	#include <misc.h>
+	#ifdef N2VM_LIB_INT
+		#include <misc.h>
+	#else
+		#include <n2vm/misc.h>
+	#endif /* N2VM_LIB_INT */
 #endif /* N2CC */
 
 typedef enum token_t {

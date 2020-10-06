@@ -97,12 +97,6 @@ MEM(lmr, vm->gpr[reg], 3, {
 });
 
 JUMP(jmp, {
-	if (vm->stc >= vm->stk_sz)
-	{
-		ERROR("Maximum call stack size exceeded.\n");
-		return -1;
-	}
-	vm->stack[vm->stc++] = PC + 4;
 	PC = vm->gpr[reg];
 });
 
@@ -128,25 +122,15 @@ SIMPLE(cmp, {
 	vm->flags = ((dst_val == src_val) << 3) | ((dst_val != src_val) << 2) | ((dst_val > src_val) << 1) | (dst_val < src_val);
 });
 
-SIMPLE(shl, {
-	vm->gpr[reg] <<= val;
-});
+MATH(shl, <<=);
 
-SIMPLE(shr, {
-	vm->gpr[reg] >>= val;
-});
+MATH(shr, >>=);
 
-SIMPLE(ior, {
-	vm->gpr[reg] |= val;
-});
+MATH(ior, |=);
 
-SIMPLE(xor, {
-	vm->gpr[reg] ^= val;
-});
+MATH(xor, ^=);
 
-SIMPLE(and, {
-	vm->gpr[reg] &= val;
-});
+MATH(and, &=);
 
 SIMPLE(not, {
 	vm->gpr[reg] = ~vm->gpr[reg];
@@ -155,7 +139,7 @@ SIMPLE(not, {
 SIMPLE(out, {
 	unsigned int port = vm->gpr[reg];
 
-	if (port > 0x00)
+	if (vm->ios[port] == NULL)
 	{
 		ERROR("Invalid I/O port.\n");
 		return -1;
@@ -167,6 +151,16 @@ IO(vid, {
 	VAL2REG();
 
 	printf("[VID] %s", vm->mem + vm->gpr[src_reg]);
+});
+
+JUMP(cll, {
+	if (vm->stc >= vm->stk_sz)
+	{
+		ERROR("Maximum call stack size exceeded.\n");
+		return -1;
+	}
+	vm->stack[vm->stc++] = PC + 4;
+	PC = vm->gpr[reg];
 });
 
 JUMP(sys, {
@@ -241,19 +235,20 @@ int n2vm_init()
 	ops[0x10] = jmp;
 	ops[0x11] = cmp;
 
-	ops[0x12] = shl;
-	ops[0x13] = shr;
-	ops[0x14] = ior;
-	ops[0x15] = xor;
-	ops[0x16] = and;
+	ops[0x12] = shl_op;
+	ops[0x13] = shr_op;
+	ops[0x14] = ior_op;
+	ops[0x15] = xor_op;
+	ops[0x16] = and_op;
 	ops[0x17] = not;
 
 	ops[0x18] = out;
 	ops[0x19] = nop; /* Reserved for `inp`. */
-	ops[0x1a] = sys;
+	ops[0x1a] = cll;
+	ops[0x1b] = sys;
 
-	ops[0x1b] = ret;
-	ops[0x1c] = hlt;
+	ops[0x1c] = ret;
+	ops[0x1d] = hlt;
 
 	return 0;
 }
@@ -266,6 +261,13 @@ n2vm_t* n2vm_new(int mem_min, int mem_max, int stack_max, int sys_max)
 	n2vm_t* vm;
 
 	vm = (n2vm_t*)malloc(sizeof(n2vm_t) + 1);
+
+	if (vm == NULL)
+	{
+		ERROR("Failed to allocate enough memory.\n");
+		errno = ENOMEM;
+		return NULL;
+	}
 
 	tmp_mem = malloc(mem_max);
 	while (tmp_mem == NULL && tmp_div < 5)
@@ -349,7 +351,14 @@ int n2vm_run(n2vm_t* vm)
 
 int n2vm_clean(n2vm_t* vm)
 {
-	free(vm->mem);
-	free(vm);
+	if (vm != NULL && vm->mem != NULL)
+	{
+		free(vm->mem);
+		free(vm);
+	} else
+	{
+		ERROR("Error: Invalid VM.\n");
+		return -1;
+	}
 	return 0;
 }

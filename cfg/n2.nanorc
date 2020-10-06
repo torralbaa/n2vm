@@ -1,0 +1,19 @@
+# N2 syntax highlighting.
+syntax "N2" "\.(n2|N2)$"
+comment "//"
+
+# Labels.
+color brightmagenta "^[[:space:]]*[A-Z_a-z]+:[[:space:]]*$"
+
+# Keywords.
+color green "\<(func|var|asm|return|call)\>"
+
+# Strings.
+color brightyellow ""([^"]|\\")*"" "<[^[:blank:]=]*>"
+
+## Comment highlighting.
+color brightblue "//.*"
+color brightblue start="/\*" end="\*/"
+
+## Trailing whitespace.
+color ,green "[[:space:]]+$"

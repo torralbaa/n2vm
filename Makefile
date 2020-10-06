@@ -34,9 +34,9 @@ lib: dir
 
 test: all
 	./build/n2cc -o ./build/n2_test ./test/test.n2
-	./build/n2as -o ./build/asm_test ./test/test.asm
-	./build/n2as -o ./build/base ./test/base.asm
-	./build/n2as -o ./build/emp ./test/emp.asm
+	python3 ./src/n2as.py -o ./build/asm_test ./test/test.asm
+	python3 ./src/n2as.py -o ./build/base ./test/base.asm
+	python3 ./src/n2as.py -o ./build/emp ./test/emp.asm
 	cat ./build/base ./build/emp > ./build/os
 
 dir:
