@@ -49,29 +49,33 @@ token_t lex(lexer_t* lexer)
 	islash = [/];
 	comm_end = "*" islash;
 	reg = "$r" ([0-9] | "1" [0-5] | "0" [0-9]);
+	cond = "!" ("eq"|"ne"|"gt"|"lt"|"al");
 	*/
 
 regular:
 	if (YYCURSOR >= lexer->end)
 	{
-		return END;
+		return TOK_END;
 	}
 	lexer->top = lexer->cur;
 
 	/*!re2c
-	"var" { return VAR; }
-	"asm" { return ASM; }
-	"func" { return FUNC; }
-	"return" { return RETURN; }
-	"call" { return CALL; }
-	reg { return REG; }
-	name { return NAME; }
-	"=" { return ASSIGN; }
-	int { return INT; }
-	str { return CSTR; }
-	"{" { return LBR; }
-	"}" { return RBR; }
-	";" { return SEMICOLON; }
+	"var" { return TOK_VAR; }
+	"asm" { return TOK_ASM; }
+	"func" { return TOK_FUNC; }
+	"return" { return TOK_RETURN; }
+	"call" { return TOK_CALL; }
+	"cmp" { return TOK_CMP; }
+	"case" { return TOK_CASE; }
+	reg { return TOK_REG; }
+	name { return TOK_NAME; }
+	cond { return TOK_COND; }
+	"=" { return TOK_ASSIGN; }
+	int { return TOK_INT; }
+	str { return TOK_CSTR; }
+	"{" { return TOK_LBR; }
+	"}" { return TOK_RBR; }
+	";" { return TOK_SEMICOLON; }
 	"/*" { goto comment; }
 	"//" { goto inline_comment; }
 	"#" { goto inline_comment; }
@@ -91,7 +95,7 @@ regular:
 comment:
 	if (YYCURSOR >= lexer->end)
 	{
-		return END;
+		return TOK_END;
 	}
 	/*!re2c
 	comm_end { goto regular; }
@@ -109,7 +113,7 @@ comment:
 inline_comment:
 	if (YYCURSOR >= lexer->end)
 	{
-		return END;
+		return TOK_END;
 	}
 	/*!re2c
 	lf
@@ -138,14 +142,21 @@ char* get_token(lexer_t* lexer)
 
 int write_label(label_t label, char* code, char* data)
 {
-	if (label.type == VAR)
+	unsigned int data_len;
+
+	if ((label.type & TOK_VAR) == TOK_VAR)
 	{
 		strcat(data, ".");
 		strcat(data, label.name);
 		strcat(data, ":\n\t.data ");
 		strcat(data, label.val);
+		if ((label.type & TOK_CSTR) == TOK_CSTR)
+		{
+			data_len = strlen(data);
+			strcpy(data + data_len - 1, "\\x00\"");
+		}
 		strcat(data, "\n");
-	} else if (label.type == FUNC)
+	} else if (label.type == TOK_FUNC)
 	{
 		strcat(code, ".");
 		strcat(code, label.name);
@@ -156,12 +167,12 @@ int write_label(label_t label, char* code, char* data)
 
 int write_code(label_t label, char* code)
 {
-	if (label.type == ASM)
+	if (label.type == TOK_ASM)
 	{
 		label.val[0] = '\t';
 		label.val[strlen(label.val) - 1] = '\n';
 		strcat(code, label.val);
-	} else if (label.type == CALL)
+	} else if (label.type == TOK_CALL)
 	{
 		strcat(code, "\tlri 0x00, @");
 		strcat(code, label.name);
@@ -182,12 +193,8 @@ int compile(char* inp, char* file, char* code, char* data)
 	token_t tok;
 	token_t func_any;
 	label_t label;
-	assign_t assign;
-	pid_t pid;
-	int func = 1;
-	int reassign = 1;
-	int level = 0;
-	int excepted = ANY;
+	status_t status;
+	int excepted = TOK_ANY;
 	int code_len = 0;
 	unsigned int tmp_val = 0;
 
@@ -198,85 +205,106 @@ int compile(char* inp, char* file, char* code, char* data)
 	lexer.file = file;
 	lexer.line = 1;
 
-	func_any = VAR | NAME | REG | SEMICOLON | RETURN | ASM | LBR | RBR | CALL;
+	func_any = TOK_VAR | TOK_NAME | TOK_REG | TOK_SEMICOLON | TOK_RETURN | TOK_ASM | TOK_LBR | TOK_RBR | TOK_CALL | TOK_CMP;
+	status.level = 0;
+	status.cases = 0;
+	status.reassign = 1;
 
 	strcpy(code, ".start:\n\tlri 0x00, @main\n\tcll 0x00\n\thlt\n\n");
 
 	tok = lex(&lexer);
 	while (tok)
 	{
-		if ((excepted != ANY && (excepted & tok) != tok) || tok == -1)
+		if ((excepted != TOK_ANY && (excepted & tok) != tok) || tok == -1)
 		{
-			COMP_ERROR("Unexcepted token: " BOLD "%c %i excepted %i" RESET ".\n", *(lexer.cur + 1), tok, excepted);
+			COMP_ERROR("Unexcepted token: " BOLD "%c (0x%02x)" RESET ", excepted 0x%02x.\n", *(lexer.cur + 1), tok, excepted);
 			puts(code);
 			puts(data);
 			return -1;
 		}
 		switch (tok)
 		{
-			case VAR:
-				excepted = NAME;
-				label.type = VAR;
+			case TOK_VAR:
+				excepted = TOK_NAME;
+				label.type = TOK_VAR;
 			break;
-			case NAME:
+			case TOK_NAME:
 				label.name = get_token(&lexer);
-				if (label.type == FUNC)
+				if (label.type == TOK_FUNC)
 				{
 					write_label(label, code, data);
-					excepted = LBR;
-					func = 0;
+					excepted = TOK_LBR;
+					status.func = 0;
 					label.type = 0x00;
-				} else if (label.type == CALL)
+				} else if (label.type == TOK_CALL)
 				{
 					write_code(label, code);
-					excepted = SEMICOLON;
+					excepted = TOK_SEMICOLON;
 					label.type = 0x00;
-				} else if (label.type == REG)
+				} else if (label.type == TOK_REG)
 				{
 					label.assign = RA;
 					write_code(label, code);
 				} else
 				{
-					if (excepted == ANY || excepted == func_any)
+					if (excepted == TOK_ANY || excepted == func_any)
 					{
-						reassign = 0;
+						status.reassign = 0;
 					}
-					excepted = ASSIGN;
+					excepted = TOK_ASSIGN;
 				}
 			break;
-			case REG:
-				if (label.type == REG)
+			case TOK_REG:
+				if (label.type == TOK_REG)
 				{
 					label.val = get_token(&lexer);
 					label.assign = RR;
 					write_code(label, code);
+					free(label.val);
+				} else if (label.type == TOK_CMP)
+				{
+					if (label.val == NULL)
+					{
+						label.val = get_token(&lexer);
+						sprintf(code + strlen(code), "\tcmp 0x%02x, ", atoi(label.val + 2));
+						excepted = TOK_REG;
+					} else
+					{
+						label.val = get_token(&lexer);
+						sprintf(code + strlen(code), "0x%02x\n", atoi(label.val + 2));
+						label.type = 0x00;
+						//excepted = TOK_LBR;
+						excepted = TOK_SEMICOLON;
+					}
+					free(label.val);
 				} else
 				{
 					label.val = get_token(&lexer);
-					label.type = REG;
-					excepted = ASSIGN;
+					label.type = TOK_REG;
+					excepted = TOK_ASSIGN;
 				}
 			break;
-			case ASSIGN:
-				if (reassign == 0)
+			case TOK_ASSIGN:
+				if (status.reassign == 0)
 				{
-					excepted = INT;
-				} else if (label.type == REG)
+					excepted = TOK_INT;
+				} else if (label.type == TOK_REG)
 				{
-					excepted = INT | NAME | REG;
+					excepted = TOK_INT | TOK_NAME | TOK_REG;
 				} else
 				{
-					excepted = INT | CSTR;
+					excepted = TOK_INT | TOK_CSTR;
 				}
 			break;
-			case INT:
+			case TOK_INT:
 				label.val = get_token(&lexer);
 				code_len = strlen(code);
-				if (label.type == VAR)
+				if (label.type == TOK_VAR)
 				{
+					label.type |= TOK_INT;
 					write_label(label, code, data);
 					free(label.name);
-				} else if (reassign == 0)
+				} else if (status.reassign == 0)
 				{
 					tmp_val = strtol(label.val, NULL, 16);
 					if (tmp_val > UINT16_MAX)
@@ -290,25 +318,26 @@ int compile(char* inp, char* file, char* code, char* data)
 					strcat(code, "\tlri 0x01, @");
 					strcat(code, label.name);
 					strcat(code, "\n\tlmr 0x01, 0x02\n");
-					reassign = 1;
-				} else if (excepted == (INT | SEMICOLON))
+					status.reassign = 1;
+				} else if (excepted == (TOK_INT | TOK_SEMICOLON))
 				{
 					strcat(code, "\tlri 0x0e, ");
 					strcat(code, label.val);
 					strcat(code, "\n");
-				} else if (label.type == REG)
+				} else if (label.type == TOK_REG)
 				{
 					tmp_val = strtol(label.val, NULL, 16);
 					sprintf(code + strlen(code), "\tlri 0x%02x, 0x%02x\n", atoi(label.name + 2), tmp_val);
 				}
 				label.type = 0x00;
-				excepted = SEMICOLON;
+				excepted = TOK_SEMICOLON;
 				free(label.val);
 			break;
-			case CSTR:
+			case TOK_CSTR:
 				label.val = get_token(&lexer);
-				if (label.type == VAR)
+				if (label.type == TOK_VAR)
 				{
+					label.type |= TOK_CSTR;
 					write_label(label, code, data);
 					free(label.name);
 				} else
@@ -316,50 +345,65 @@ int compile(char* inp, char* file, char* code, char* data)
 					write_code(label, code);
 				}
 				label.type = 0x00;
-				excepted = SEMICOLON;
+				excepted = TOK_SEMICOLON;
 				free(label.val);
 			break;
-			case SEMICOLON:
-				if (func == 0)
+			case TOK_SEMICOLON:
+				if (status.func == 0)
 				{
 					excepted = func_any;
 				} else
 				{
-					excepted = ANY;
+					excepted = TOK_ANY;
 				}
 			break;
-			case RETURN:
-				excepted = INT | SEMICOLON;
+			case TOK_RETURN:
+				excepted = TOK_INT | TOK_SEMICOLON;
 			break;
-			case ASM:
+			case TOK_ASM:
 				label.name = NULL;
-				label.type = ASM;
-				excepted = CSTR;
+				label.type = TOK_ASM;
+				excepted = TOK_CSTR;
 			break;
-			case FUNC:
-				label.type = FUNC;
-				excepted = NAME;
+			case TOK_FUNC:
+				label.type = TOK_FUNC;
+				excepted = TOK_NAME;
 			break;
-			case LBR:
-				excepted = ANY;
-				level++;
+			case TOK_LBR:
+				if (label.type == TOK_FUNC || label.type == 0x00)
+				{
+					excepted = TOK_ANY;
+				} else
+				{
+					excepted = TOK_CASE;
+				}
+				status.level++;
 			break;
-			case RBR:
-				excepted = ANY;
-				if (level == 1 && func == 0)
+			case TOK_RBR:
+				excepted = TOK_ANY;
+				if (status.level == 1 && status.func == 0)
 				{
 					strcat(code, "\tret\n");
 				}
-				level--;
+				status.level--;
 			break;
-			case CALL:
-				excepted = NAME;
-				label.type = CALL;
+			case TOK_CALL:
+				excepted = TOK_NAME;
+				label.type = TOK_CALL;
 			break;
-			case END:
+			case TOK_CMP:
+				label.type = TOK_CMP;
+				label.val = NULL;
+				excepted = TOK_REG;
+			break;
+			/*case TOK_CASE:
+			status.cases
+				label.type = TOK_COND;
+			break;*/
+			case TOK_END:
 			break;
 			default:
-				COMP_ERROR("Unknown token: " BOLD "%c" RESET ".\n", *(lexer.cur));
+				COMP_ERROR("Unknown token: " BOLD "0x%02x" RESET ".\n", *(lexer.cur));
 				return -1;
 			break;
 		}
@@ -384,12 +428,10 @@ int main(int argc, char* argv[])
 	int wstatus;
 	char option;
 	char* buff;
-	char* tmp_buff;
 	char* out_code;
 	char* out_data;
 	char* out_path;
 	char* n2as_path;
-	char** tmp_argv;
 	FILE* input_fd;
 	FILE* output_fd;
 	pid_t pid;

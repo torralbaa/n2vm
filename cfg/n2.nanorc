@@ -6,7 +6,7 @@ comment "//"
 color brightmagenta "^[[:space:]]*[A-Z_a-z]+:[[:space:]]*$"
 
 # Keywords.
-color green "\<(func|var|asm|return|call)\>"
+color green "\<(func|var|asm|return|call|cmp|goto|case)\>"
 
 # Strings.
 color brightyellow ""([^"]|\\")*"" "<[^[:blank:]=]*>"

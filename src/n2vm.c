@@ -137,7 +137,7 @@ SIMPLE(not, {
 });
 
 SIMPLE(out, {
-	unsigned int port = vm->gpr[reg];
+	unsigned int port = CHR(reg, 0);
 
 	if (vm->ios[port] == NULL)
 	{
@@ -147,10 +147,15 @@ SIMPLE(out, {
 	vm->ios[port](vm, reg, val);
 });
 
-IO(vid, {
-	VAL2REG();
+SIMPLE(inp, {
+	unsigned int port = CHR(reg, 0);
 
-	printf("[VID] %s", vm->mem + vm->gpr[src_reg]);
+	if (vm->ios[port] == NULL)
+	{
+		ERROR("Invalid I/O port.\n");
+		return -1;
+	}
+	vm->ios[port](vm, reg, val);
 });
 
 JUMP(cll, {
@@ -243,7 +248,7 @@ int n2vm_init()
 	ops[0x17] = not;
 
 	ops[0x18] = out;
-	ops[0x19] = nop; /* Reserved for `inp`. */
+	ops[0x19] = inp;
 	ops[0x1a] = cll;
 	ops[0x1b] = sys;
 
@@ -297,8 +302,34 @@ n2vm_t* n2vm_new(int mem_min, int mem_max, int stack_max, int sys_max)
 	vm->flags = 0b0000;
 	vm->running = 0;
 	vm->stc = 0;
-	vm->ios[0] = vid;
+	//vm->ios[0] = vid;
+	vm->ioc = 0;
 	return vm;
+}
+
+int n2vm_bind(n2vm_t* vm, op_t handler, int* index)
+{
+	int tmp_index = *index;
+
+	if (vm == NULL || handler == NULL)
+	{
+		ERROR("Invalid VM or handler.\n");
+		return -1;
+	}
+
+	if (vm->ioc >= 16 || tmp_index >= 16)
+	{
+		ERROR("Maximum I/O ports count exceeded.\n");
+		return -1;
+	}
+
+	if (tmp_index == -1 || vm->ios[tmp_index] != NULL)
+	{
+		*index = vm->ioc++;
+		tmp_index = *index;
+	}
+	vm->ios[tmp_index] = handler;
+	return tmp_index;
 }
 
 int n2vm_run(n2vm_t* vm)
@@ -307,6 +338,8 @@ int n2vm_run(n2vm_t* vm)
 	unsigned char reg = 0;
 	unsigned char op = 0;
 	unsigned char cond = 0;
+
+	X_SET_TERM();
 
 	while (vm->running == 0 && PC < vm->mem_sz)
 	{
@@ -326,11 +359,13 @@ int n2vm_run(n2vm_t* vm)
 		if (op > 0x21)
 		{
 			ERROR("Error: Illegal instruction.\n");
+			X_RESET_TERM();
 			return -1;
 		}
 		if (reg > 0x0f)
 		{
 			ERROR("Error: Invalid register.\n");
+			X_RESET_TERM();
 			return -1;
 		}
 
@@ -338,6 +373,7 @@ int n2vm_run(n2vm_t* vm)
 		{
 			if (ops[op](vm, reg, val) != 0)
 			{
+				X_RESET_TERM();
 				return -1;
 			}
 		} else
@@ -346,6 +382,8 @@ int n2vm_run(n2vm_t* vm)
 		}
 	}
 	PC = 0x00;
+
+	X_RESET_TERM();
 	return 0;
 }
 

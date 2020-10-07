@@ -31,35 +31,39 @@
 	#endif /* N2VM_LIB_INT */
 #endif /* N2CC */
 
+#ifdef N2CC
+
 typedef enum token_t {
-	END,
-	VAR,
-	NAME,
-	REG,
-	ASSIGN,
-	INT, 
-	CSTR,
-	SEMICOLON,
-	RETURN,
-	ASM,
-	FUNC,
-	LBR,
-	RBR,
-	LPA,
-	RPA,
-	CALL,
-	COMMA,
-	ANY
+	TOK_END,
+	TOK_VAR,
+	TOK_NAME,
+	TOK_REG,
+	TOK_ASSIGN,
+	TOK_INT,
+	TOK_CSTR,
+	TOK_SEMICOLON,
+	TOK_RETURN,
+	TOK_ASM,
+	TOK_FUNC,
+	TOK_LBR,
+	TOK_RBR,
+	TOK_LPA,
+	TOK_RPA,
+	TOK_CALL,
+	TOK_COMMA,
+	TOK_CMP,
+	TOK_CASE,
+	TOK_COND,
+	TOK_ANY
 } token_t;
 
 typedef enum assign_t {
-	PADDING,
-	RR, /* Register in Register */
-	RI, /* Immediate in Register */
-	RA, /* Address in Register */
-	AR, /* Register in Address*/
-	AI, /* Immediate in Address */
-	AA, /* Address in Address */
+	RR = 1, /* Register in Register */
+	RI = 2, /* Immediate in Register */
+	RA = 3, /* Address in Register */
+	AR = 4, /* Register in Address*/
+	AI = 5, /* Immediate in Address */
+	AA = 6, /* Address in Address */
 } assign_t;
 
 typedef enum actions_t {
@@ -86,29 +90,42 @@ typedef struct label_t {
 	assign_t assign;
 } label_t;
 
-#ifndef N2CC
-	typedef struct n2vm_t n2vm_t;
-	typedef int (*op_t)(n2vm_t* vm, unsigned char reg, unsigned short val);
-
-	typedef struct n2vm_t {
-		unsigned char* mem;
-		unsigned int gpr[16];
-		unsigned int* stack;
-		unsigned int* sys_tab;
-		unsigned int flags;
-		int running;
-		int stc;
-		int mem_sz;
-		int stk_sz;
-		int sys_sz;
-		op_t ios[8];
-	} n2vm_t;
-#endif /* N2CC */
-
 typedef enum pre_token_t {
 	FILL,
 	HASH,
 	POTENTIAL
 } pre_token_t;
+
+/* Apparently _Bool and bitfields are evil(?) */
+typedef struct status_t {
+	struct {
+		int func;
+		int reassign;
+		int level;
+		int cases;
+	};
+	struct {
+		int has_main;
+	};
+} status_t;
+#else
+typedef struct n2vm_t n2vm_t;
+typedef int (*op_t)(n2vm_t* vm, unsigned char reg, unsigned short val);
+
+typedef struct n2vm_t {
+	unsigned char* mem;
+	unsigned int gpr[16];
+	unsigned int* stack;
+	unsigned int* sys_tab;
+	unsigned int flags;
+	int running;
+	int stc;
+	int mem_sz;
+	int stk_sz;
+	int sys_sz;
+	op_t ios[16];
+	int ioc;
+} n2vm_t;
+#endif /* N2CC */
 
 #endif /* TYPES_H */

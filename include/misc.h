@@ -78,12 +78,16 @@
 
 #define STRINGIFY(string) #string
 
-#if N2CC || DEBUG
+#if N2CC || DEBUG || MAIN
 	#define ERROR(fmt, ...) fprintf(stderr, BOLD C_ERR "Error: " RESET fmt __VA_OPT__(,) __VA_ARGS__);
+#else
+	#define ERROR(fmt, ...)
+#endif
+
+#if N2CC || DEBUG
 	#define LOG(name, reg, val) fprintf(stderr, "[CPU] " STRINGIFY(name) " 0x%02x, 0x%04x\n", reg, val);
 	#define LOG_MATH(name, reg, src_reg) fprintf(stderr, "[CPU] " STRINGIFY(name) " 0x%02x, 0x%02x\n", reg, src_reg);
 #else
-	#define ERROR(fmt, ...)
 	#define LOG(name, reg, val)
 	#define LOG_MATH(name, reg, src_reg)
 #endif
@@ -124,5 +128,20 @@
 	}
 
 #define PRINT_INFO(macro) printf(BOLD WHITE #macro ": " GREEN STRINGIFY(macro) RESET "\n");
+
+#ifdef _WIN32 /* M$ Windows. */
+	#include <win32.h>
+#else /* POSIX systems. */
+	#include <termios.h>
+	#define X_GETCHAR() getchar()
+	#define X_SET_TERM() \
+		struct termios mode; \
+		struct termios old_mode; \
+        tcgetattr(0, &old_mode); \
+		tcgetattr(0, &mode); \
+		mode.c_lflag &= ~(ECHO | ICANON); \
+		tcsetattr(0, TCSANOW, &mode);
+	#define X_RESET_TERM() tcsetattr(0, TCSANOW, &old_mode);
+#endif /* _WIN32 */
 
 #endif /* MISC_H */

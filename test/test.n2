@@ -1,4 +1,4 @@
-var abc = "Hello World!\n\x00";
+var abc = "Hello World!\n";
 var i = 0x01;
 
 /*
@@ -8,6 +8,7 @@ var i = 0x01;
 
 func main
 {
+	cmp $r1 $r2; // Dummy comparison
 	i = 0xffff7f; // Single-line comment!
 	$r1 = abc;
 	call print;

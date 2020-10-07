@@ -62,7 +62,7 @@ ops = {
 	"and": 0x16,
 	"not": 0x17,
 	"out": 0x18,
-	"inp": 0x19, # Reserved for `inp`.
+	"inp": 0x19,
 	"cll": 0x1a,
 	"sys": 0x1b,
 	"ret": 0x1c,

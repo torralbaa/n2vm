@@ -1,5 +1,5 @@
 /*
- * proto.h
+ * win32.h
  * 
  * Copyright 2018-2020 Alvarito050506 <donfrutosgomez@gmail.com>
  * 
@@ -20,25 +20,17 @@
  * 
  */
 
-#ifndef PROTO_H
-#define PROTO_H
+#ifndef WIN32_H
+#define WIN32_H
+#include <conio.h>
+#include <windows.h>
 
-#ifdef N2VM_LIB_INT
-	#include <types.h>
-#else
-	#include <n2vm/types.h>
-#endif /* N2VM_LIB_INT */
+#define X_GETCHAR() getch()
+#define X_SET_TERM() \
+	DWORD mode; \
+	HANDLE console = GetStdHandle(STD_INPUT_HANDLE); \
+	GetConsoleMode(console, &mode); \
+	SetConsoleMode(console, mode & ~(ENABLE_ECHO_INPUT | ENABLE_LINE_INPUT));
+#define X_RESET_TERM()
 
-#ifdef N2VM_LIB_INT
-	unsigned char get_char(int num, int pos);
-	unsigned int get_int(char* buff);
-	unsigned short get_short(char* buff);
-#endif /* N2VM_LIB_INT */
-
-int n2vm_init();
-n2vm_t* n2vm_new(int mem_min, int mem_max, int stack_max, int sys_max);
-int n2vm_bind(n2vm_t* vm, op_t handler, int* index);
-int n2vm_run(n2vm_t* vm);
-int n2vm_clean(n2vm_t* vm);
-
-#endif /* PROTO_H */
+#endif /* WIN32_H */

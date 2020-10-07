@@ -8,6 +8,7 @@ No Name Virtual Machine: A simple VM.
    + [Building](#building)
    + [Installation](#installation)
  + [Design](#design)
+   + [Endianess and lengths](#endianess-and-lengths)
    + [Instruction templates](#instruction-templates)
    + [Instruction set](#instruction-set)
    + [Conditional execution](#conditional-execution)
@@ -16,6 +17,7 @@ No Name Virtual Machine: A simple VM.
    + [Basic syntax](#basic-syntax)
    + [Storing data](#storing-data)
    + [Labels](#labels)
+   + [The `inp` instruction](#the-inp-instruction)
  + [N2 Language](#n2-language)
    + [Variables](#variables)
    + [Functions](#functions)
@@ -64,6 +66,9 @@ This will probably require root/elevated permissions.
 
 ## Design
 The n2vm architecture and design is heavily inspired by ARMv7+.
+
+### Endianess and lengths
+n2vm is a big endian machine, it means that the LSB (Less Significant Byte) of a word as the first byte. The word lenght is 32 bits, and the instruction length is fixed to 32 bits too.
 
 ### Instruction templates
 All n2vm the instructions are 32-bit.
@@ -149,8 +154,8 @@ Register to register (RR):
 |    `xor`    |   `0x15`   |     RR     |            `gpr[dst] ^= gpr[src]`             |
 |    `and`    |   `0x16`   |     RR     |            `gpr[dst] &= gpr[src]`             |
 |    `not`    |   `0x17`   |     SR     |            `gpr[dst] ~= gpr[dst]`             |
-|    `out`    |   `0x18`   |    RI/RR   |    Calls the I/O function `iop[gpr[src]]`.    |
-|    `inp`    |   `0x19`   |     NP     |        Reserved - Not implemented yet.        |
+|    `out`    |   `0x18`   |    RI/RR   |       Calls the I/O function `ios[src]`.      |
+|    `inp`    |   `0x19`   |    RI/RR   |       See [here](#the-inp-instruction).       |
 |    `cll`    |   `0x1a`   |     SR     | Same as `jmp`, but stores `PC` in the stack.  |
 |    `sys`    |   `0x1b`   |     SR     |   Makes a system call to `sys_tab[uint8]`.    |
 |    `ret`    |   `0x1c`   |     NP     |               `PC = stk[stc--]`               |
@@ -201,7 +206,8 @@ lrr 0x01, 0x01
 The execution condition can be added at the end of the instruction:
 ```asm
 ; Conditional execution example
-;  Jumps to the address loaded in the register 0x02 if the values of the registers 0x01 and 0x00 are equal.
+;  Jumps to the address loaded in the register 0x02 if the values
+;  of the registers 0x01 and 0x00 are equal.
 cmp 0x00, 0x01
 jmp 0x01 !eq
 ```
@@ -228,6 +234,15 @@ The syntax for labels is a bit particular:
 ;  Arbitrary data.
 .abc:
 	.data 0xabc01
+```
+
+### The `inp` instruction
+The `inp` instruction behaves so or less like `out`, except that it's used for _input_. Handling input requires and a special case, where the source comes before the destination:
+```asm
+; `inp` instruction example
+;  Gets a character from the user (I/O port 0x01), and stores it into
+;  the register 0x04.
+inp 0x01, 0x04
 ```
 
 You check the [`test`](https://github.com/Alvarito050506/n2vm/tree/master/test) folder for more examples.
