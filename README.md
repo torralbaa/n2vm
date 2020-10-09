@@ -12,6 +12,7 @@ No Name Virtual Machine: A simple VM.
    + [Instruction templates](#instruction-templates)
    + [Instruction set](#instruction-set)
    + [Conditional execution](#conditional-execution)
+   + [The offset](#the-offset)
  + [Implementation](#implementation)
  + [Assembly](#assembly)
    + [Basic syntax](#basic-syntax)
@@ -34,6 +35,7 @@ No Name Virtual Machine: A simple VM.
    + [`int n2vm_run(n2vm_t* vm)`](#int-n2vm_runn2vm_t-vm)
    + [`int n2vm_clean(n2vm_t* vm)`](#int-n2vm_cleann2vm_t-vm)
  + [Extras](#extras)
+ + [TODO list](#todo-list)
  + [Licensing](#licensing)
 
 ## Getting started
@@ -119,9 +121,11 @@ Register to register (RR):
 0x0c ----------
      |  dst   |
 0x0f ----------
+     |  sign  |
+0x10 ----------
+     | offset |
+0x1c ----------
      |  src   |
-0x13 ----------
-     | ignore |
 0x20 ----------
 ```
 
@@ -168,6 +172,22 @@ _All_ the operations can be conditionally executed, but only the `cmp` operation
  + `ne`: `0b0100`. Execute if **n**ot **e**qual.
  + `gt`: `0b0010`. Execute if **g**reater **t**han.
  + `lt`: `0b0001`. Execute if **l**ess **t**han.
+
+### The offset
+Some SR/RR instructions do not ignore the `sign` and `offset` fields, instead they "add" these bits to the operation. The jump instructions `jmp` and `cll` add or substract `offset` to jump location depending on `sign`. Something similar happens with the arithmetic and logical operations, for example:
+```asm
+add 0x00, 0x01 +0x02 ; Adds the value of the register 0x01 plus 0x02 to the register 0x00.
+sub 0x03, 0x04 +0x05 ; Substracts the value of the register 0x04 plus 0x05 to the register 0x03.
+```
+
+This could be used to implement position independent code, for example:
+```asm
+jmp 0x0f +0x08 ; Jumps to `other_place`, using a PC-relative jump.
+nop
+
+.other_place:
+	; Etc...
+```
 
 ## Implementation
 n2vm is like any other simple VM: Loads the bytecode and executes it until a `hlt` instruction or an error. The implementation uses an array of function pointers ([`op_t`](#typedef-int-op_t)) to store the implementation of each opcode. Then it enters a loop that checks the flags and executes the next instruction:
@@ -249,7 +269,7 @@ You check the [`test`](https://github.com/Alvarito050506/n2vm/tree/master/test) 
 
 ## N2 Language
 The N2 Language (a.k.a. N2C), is a toy high-level language created for n2vm. It only supports a few basic operations, and more complex ones could be implemented in assembly. It is based on a mix of C and assembly, following the "everything is an pointer" philosophy.
- + Keywords: `func`, `var`, `asm`, `call`, `return`.
+ + Keywords: `func`, `var`, `asm`, `call`, `return`, `cmp`, `goto`.
  + Data types: pointers.
  + Comments: inline (`//`), multiline (`/*...*/`)
 
@@ -294,7 +314,6 @@ func dummy
 ```
 
 ### Inline assembly and registers
-
 The inline assembly is the following.
 ```c
 asm "lri 0x00, 0x01"; // Injects `lri 0x00, 0x01` in the code.
@@ -303,6 +322,21 @@ asm "lri 0x00, 0x01"; // Injects `lri 0x00, 0x01` in the code.
 You can also directly manipulate registers (`$r0...$r15`).
 ```c
 $r1 = 0x05; // Same as `lri 0x01, 0x05`
+```
+
+You can directly execute the `cmp` and `jmp` instructions using the `cmp` and `goto` keywords:
+```c
+cmp $r1 $r2;
+goto some_label;
+```
+That is translated to:
+```asm
+; cmp $r1 $r2
+cmp 0x01, 0x02
+
+; goto some_label
+lri 0x00, @some_label
+jmp 0x00
 ```
 
 You check the [`test`](https://github.com/Alvarito050506/n2vm/tree/master/test) folder for more examples.
@@ -359,7 +393,8 @@ typedef struct n2vm_t {
 	int mem_sz;            /* Memory size */
 	int stk_sz;            /* Stack size */
 	int sys_sz;            /* Syscall table size */
-	op_t ios[8];           /* I/O functions */
+	op_t ios[16];          /* I/O functions */
+	int ioc;               /* Count of assigned I/O ports */
 } n2vm_t;
 ```
 
@@ -381,16 +416,33 @@ Returns a pointer to a new VM. All the arguments are required.
 
 Returns `NULL` and sets `errno` to `ENOMEM` if it fails to allocate at least `sizeof(n2vm_t) + mem_min` bytes of memory.
 
+## `int n2vm_bind(n2vm_t* vm, op_t handler, int* index)`
+Tries to bind (assign) the `handler` function to an I/O port (dereferenced from `index`) of `vm`.
+ + `vm`: A pointer to the VM.
+ + `handler`: A pointer to a function matching (or compatible with) the [`op_t`](#typedef-int-op_t) prototype.
+ + `index`: A pointer to the _wanted_ I/O port number. `-1` for [`vm->ioc++`](#typedef-struct-n2vm_t).
+
+Returns the I/O port number assigned to `handler` on success. It _could_ be other number than `*index` if it is already handled/binded, you _should_ check for this if your code depends on a specific port.
+
+Returns `-1` if `vm`, `handler` or `index` are `NULL`, or if there are no I/O ports avaiable.
+
 ### `int n2vm_run(n2vm_t* vm)`
-Executes the code in `vm`. Returns `0` on success, and `-1` if there is an error in the code or the runtime.
+Executes the code in `vm`. Returns `0` on success, and `-1` if there is an error in the code or the runtime or if `vm`, `vm->mem`, `vm->stack`, `vm->sys_tab` or are `NULL`.
 
 ### `int n2vm_clean(n2vm_t* vm)`
 Frees `vm` and its memory. Returns `0` on success, and `-1` if `vm` or `vm->mem` are `NULL`.
+
+A good example of how to use these functions and types can be found in the [`main.c`](https://github.com/Alvarito050506/n2vm/blob/master/src/main.c) file of the VM itself.
 
 <!-- _More documentation coming soon._ -->
 
 ## Extras
 You can found syntaxes for [nano](https://github.com/Alvarito050506/n2vm/blob/master/cfg/n2.nanorc) and [Geany](https://github.com/Alvarito050506/n2vm/blob/master/cfg/filetypes.N2.nanorc) in the [`cfg`](https://github.com/Alvarito050506/n2vm/tree/master/cfg/) directory.
+
+## TODO list
+ + [ ] Allow `n2cc` to generate position-independent code, and enable it by default.
+ + [ ] Build a C-like preprocessor for `n2cc`.
+ + [ ] Check how endianess-independent all the programs (`n2vm`, `n2as`, `n2cc`) actually are.
 
 ## Licensing
 All the code of this project is licensed under the [GNU General Public License version 2.0](https://github.com/Alvarito050506/MCPIL/blob/master/LICENSE) (GPL-2.0).

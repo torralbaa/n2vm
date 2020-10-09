@@ -25,10 +25,19 @@
 #include <stdint.h>
 
 #define N2_MAJOR 0
-#define N2_MINOR 2
+#define N2_MINOR 3
 #define N2_PATCH 0
-#define VERSION "v0.2.0"
+#define VERSION "v0.3.0"
 
+#ifndef UINT11_MAX
+#define UINT11_MAX 2047
+#endif
+#ifndef UINT12_MAX
+#define UINT12_MAX 4095
+#endif
+#ifndef UINT13_MAX
+#define UINT13_MAX 8191
+#endif
 #ifndef UINT16_MAX
 #define UINT16_MAX 65535
 #endif

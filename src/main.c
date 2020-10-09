@@ -32,7 +32,7 @@
 IO(vid, {
 	VAL2REG();
 
-	printf("[VID] %s", vm->mem + vm->gpr[src_reg]);
+	fast_printf(vm->mem + vm->gpr[src_reg]);
 });
 
 IO(gch, {
@@ -57,9 +57,9 @@ int main(int argc, char* argv[])
 	if (strcmp("--help", argv[1]) == 0 || strcmp("-h", argv[1]) == 0)
 	{
 		printf("Usage: %s [options] file\n\n", argv[0]);
-		printf("Options:\n");
-		printf("  --help\tDisplay this help and exit.\n");
-		printf("  -v\t\tDisplays the information about this VM.\n");
+		fast_printf("Options:\n");
+		fast_printf("  --help\tDisplay this help and exit.\n");
+		fast_printf("  -v\t\tDisplays the information about this VM.\n");
 		return 0;
 	} else if (strcmp("-v", argv[1]) == 0)
 	{

@@ -23,6 +23,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 #include <errno.h>
 
 #include <misc.h>
@@ -97,7 +98,9 @@ MEM(lmr, vm->gpr[reg], 3, {
 });
 
 JUMP(jmp, {
-	PC = vm->gpr[reg];
+	VAL2REG();
+
+	PC = vm->gpr[reg] + extra;
 });
 
 JUMP(ret, {
@@ -159,13 +162,15 @@ SIMPLE(inp, {
 });
 
 JUMP(cll, {
+	VAL2REG();
+
 	if (vm->stc >= vm->stk_sz)
 	{
 		ERROR("Maximum call stack size exceeded.\n");
 		return -1;
 	}
 	vm->stack[vm->stc++] = PC + 4;
-	PC = vm->gpr[reg];
+	PC = vm->gpr[reg] + extra;
 });
 
 JUMP(sys, {
@@ -185,33 +190,6 @@ JUMP(sys, {
 	vm->stack[vm->stc++] = PC + 4;
 	PC = INT(vm->mem + base);
 });
-
-unsigned char get_char(int num, int pos)
-{
-	return (char)(255 & (num >> pos));
-}
-
-unsigned short get_short(char* buff)
-{
-	unsigned short tmp = 0;
-	unsigned char* ptr = (unsigned char*)&tmp;
-
-	ptr[0] = buff[1];
-	ptr[1] = buff[0];
-	return tmp;
-}
-
-unsigned int get_int(char* buff)
-{
-	unsigned int tmp = 0;
-	unsigned char* ptr = (unsigned char*)&tmp;
-
-	ptr[0] = buff[3];
-	ptr[1] = buff[2];
-	ptr[2] = buff[1];
-	ptr[3] = buff[0];
-	return tmp;
-}
 
 int n2vm_init()
 {
@@ -302,7 +280,6 @@ n2vm_t* n2vm_new(int mem_min, int mem_max, int stack_max, int sys_max)
 	vm->flags = 0b0000;
 	vm->running = 0;
 	vm->stc = 0;
-	//vm->ios[0] = vid;
 	vm->ioc = 0;
 	return vm;
 }
@@ -311,9 +288,9 @@ int n2vm_bind(n2vm_t* vm, op_t handler, int* index)
 {
 	int tmp_index = *index;
 
-	if (vm == NULL || handler == NULL)
+	if (vm == NULL || handler == NULL || index == NULL)
 	{
-		ERROR("Invalid VM or handler.\n");
+		ERROR("Invalid VM, handler or index.\n");
 		return -1;
 	}
 
@@ -339,6 +316,12 @@ int n2vm_run(n2vm_t* vm)
 	unsigned char op = 0;
 	unsigned char cond = 0;
 
+	if (vm == NULL || vm->mem == NULL || vm->stack == NULL || vm->sys_tab == NULL)
+	{
+		ERROR("Error: Invalid VM.\n");
+		return -1;
+	}
+
 	X_SET_TERM();
 
 	while (vm->running == 0 && PC < vm->mem_sz)
@@ -358,13 +341,13 @@ int n2vm_run(n2vm_t* vm)
 
 		if (op > 0x21)
 		{
-			ERROR("Error: Illegal instruction.\n");
+			ERROR("Illegal instruction.\n");
 			X_RESET_TERM();
 			return -1;
 		}
 		if (reg > 0x0f)
 		{
-			ERROR("Error: Invalid register.\n");
+			ERROR("Invalid register.\n");
 			X_RESET_TERM();
 			return -1;
 		}

@@ -1,0 +1,8 @@
+#
+# libmagic file for EMP executables
+#
+
+0x00 string EMP	Executable EMP file
+>0x03 short 0x101 (n2vm)
+
+!:mime application/x-emp

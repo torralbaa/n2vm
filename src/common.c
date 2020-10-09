@@ -1,5 +1,5 @@
 /*
- * proto.h
+ * common.c
  * 
  * Copyright 2018-2020 Alvarito050506 <donfrutosgomez@gmail.com>
  * 
@@ -20,28 +20,40 @@
  * 
  */
 
-#ifndef PROTO_H
-#define PROTO_H
+#include <stdio.h>
+#include <string.h>
+#include <unistd.h>
 
-#ifdef N2VM_LIB_INT
-	#include <types.h>
-#else
-	#include <n2vm/types.h>
-#endif /* N2VM_LIB_INT */
+unsigned char get_char(int num, int pos)
+{
+	return (char)(255 & (num >> pos));
+}
 
-#if (N2VM_LIB_INT || N2CC)
-	unsigned char get_char(int num, int pos);
-	unsigned int get_int(char* buff);
-	unsigned short get_short(char* buff);
-	int fast_printf(const char* string);
-#endif /* N2VM_LIB_INT || N2CC */
+unsigned short get_short(char* buff)
+{
+	unsigned short tmp = 0;
+	unsigned char* ptr = (unsigned char*)&tmp;
 
-#ifndef N2CC
-	int n2vm_init();
-	n2vm_t* n2vm_new(int mem_min, int mem_max, int stack_max, int sys_max);
-	int n2vm_bind(n2vm_t* vm, op_t handler, int* index);
-	int n2vm_run(n2vm_t* vm);
-	int n2vm_clean(n2vm_t* vm);
-#endif
+	ptr[0] = buff[1];
+	ptr[1] = buff[0];
+	return tmp;
+}
 
-#endif /* PROTO_H */
+unsigned int get_int(char* buff)
+{
+	unsigned int tmp = 0;
+	unsigned char* ptr = (unsigned char*)&tmp;
+
+	ptr[0] = buff[3];
+	ptr[1] = buff[2];
+	ptr[2] = buff[1];
+	ptr[3] = buff[0];
+	return tmp;
+}
+
+int fast_printf(const char* string)
+{
+	write(STDOUT_FILENO, string, strlen(string));
+	fflush(stdout);
+	return 0;
+}

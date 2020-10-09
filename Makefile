@@ -20,24 +20,25 @@
 #  
 
 CFLAGS:=-I./include -DN2VM_LIB_INT -O3 -fPIC -DPIC -DNDEBUG
+COMMON:=$(CFLAGS) $(EXTRA_CFLAGS) ./src/common.c
 CC_CFLAGS:=-DN2CC
 
 all: cc dir lib test
-	gcc ./src/n2vm.c ./src/main.c $(CFLAGS) $(EXTRA_CFLAGS) -DMAIN -o ./build/n2vm
+	gcc ./src/n2vm.c ./src/main.c $(COMMON) -DMAIN -o ./build/n2vm
 
 cc: dir
 	re2c ./src/n2cc.re -o ./build/n2cc.c
-	gcc ./build/n2cc.c $(CFLAGS) $(CC_CFLAGS) $(EXTRA_CFLAGS) -o ./build/n2cc
+	gcc ./build/n2cc.c $(COMMON) $(CC_CFLAGS) -o ./build/n2cc
 
 lib: dir
-	gcc -shared -fPIC ./src/n2vm.c $(CFLAGS) $(EXTRA_CFLAGS) -o ./build/libn2vm.so
+	gcc -shared -fPIC ./src/n2vm.c $(COMMON) -o ./build/libn2vm.so
 
 test: dir
-	@./build/n2cc -o ./build/n2_test ./test/test.n2
-	@python3 ./src/n2as.py -o ./build/asm_test ./test/test.asm
-	@python3 ./src/n2as.py -o ./build/base ./test/base.asm
-	@python3 ./src/n2as.py -o ./build/emp ./test/emp.asm
-	@cat ./build/base ./build/emp > ./build/os
+	./build/n2cc -o ./build/n2_test ./test/test.n2
+	python3 ./src/n2as.py -o ./build/asm_test ./test/test.asm
+	python3 ./src/n2as.py -o ./build/base ./test/base.asm
+	python3 ./src/n2as.py -o ./build/emp ./test/emp.asm
+	cat ./build/base ./build/emp > ./build/os
 
 dir:
 	mkdir -p ./build/

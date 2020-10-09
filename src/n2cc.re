@@ -29,6 +29,7 @@
 #include <sys/wait.h>
 
 #include <types.h>
+#include <proto.h>
 #include <misc.h>
 
 token_t lex(lexer_t* lexer)
@@ -67,6 +68,7 @@ regular:
 	"call" { return TOK_CALL; }
 	"cmp" { return TOK_CMP; }
 	"case" { return TOK_CASE; }
+	"goto" { return TOK_GOTO; }
 	reg { return TOK_REG; }
 	name { return TOK_NAME; }
 	cond { return TOK_COND; }
@@ -177,12 +179,20 @@ int write_code(label_t label, char* code)
 		strcat(code, "\tlri 0x00, @");
 		strcat(code, label.name);
 		strcat(code, "\n\tcll 0x00\n");
+	} else if (label.type == TOK_GOTO)
+	{
+		strcat(code, "\tlri 0x00, @");
+		strcat(code, label.name);
+		strcat(code, "\n\tjmp 0x00\n");
 	} else if (label.assign == RR)
 	{
 		sprintf(code + strlen(code), "\tlrr 0x%02x, 0x%02x\n", atoi(label.name + 2), atoi(label.val + 2));
 	} else if (label.assign == RA)
 	{
 		sprintf(code + strlen(code), "\tlri 0x%02x, @%s\n", atoi(label.val + 2), label.name);
+	} else if (label.assign == RI)
+	{
+		sprintf(code + strlen(code), "\tlri 0x%02x, %s\n", atoi(label.name + 2), label.val);
 	}
 	return 0;
 }
@@ -205,7 +215,7 @@ int compile(char* inp, char* file, char* code, char* data)
 	lexer.file = file;
 	lexer.line = 1;
 
-	func_any = TOK_VAR | TOK_NAME | TOK_REG | TOK_SEMICOLON | TOK_RETURN | TOK_ASM | TOK_LBR | TOK_RBR | TOK_CALL | TOK_CMP;
+	func_any = TOK_VAR | TOK_NAME | TOK_REG | TOK_SEMICOLON | TOK_RETURN | TOK_ASM | TOK_LBR | TOK_RBR | TOK_CALL | TOK_CMP | TOK_GOTO;
 	status.level = 0;
 	status.cases = 0;
 	status.reassign = 1;
@@ -233,18 +243,23 @@ int compile(char* inp, char* file, char* code, char* data)
 				if (label.type == TOK_FUNC)
 				{
 					write_label(label, code, data);
-					excepted = TOK_LBR;
-					status.func = 0;
 					label.type = 0x00;
-				} else if (label.type == TOK_CALL)
+					status.func = 0;
+					excepted = TOK_LBR;
+					free(label.name);
+				} else if (label.type == TOK_CALL || label.type == TOK_GOTO)
 				{
 					write_code(label, code);
-					excepted = TOK_SEMICOLON;
 					label.type = 0x00;
+					excepted = TOK_SEMICOLON;
+					free(label.name);
 				} else if (label.type == TOK_REG)
 				{
 					label.assign = RA;
 					write_code(label, code);
+					label.type = 0x00;
+					excepted = TOK_SEMICOLON;
+					free(label.name);
 				} else
 				{
 					if (excepted == TOK_ANY || excepted == func_any)
@@ -268,18 +283,18 @@ int compile(char* inp, char* file, char* code, char* data)
 						label.val = get_token(&lexer);
 						sprintf(code + strlen(code), "\tcmp 0x%02x, ", atoi(label.val + 2));
 						excepted = TOK_REG;
+						free(label.val);
 					} else
 					{
 						label.val = get_token(&lexer);
 						sprintf(code + strlen(code), "0x%02x\n", atoi(label.val + 2));
 						label.type = 0x00;
-						//excepted = TOK_LBR;
 						excepted = TOK_SEMICOLON;
+						free(label.val);
 					}
-					free(label.val);
 				} else
 				{
-					label.val = get_token(&lexer);
+					label.name = get_token(&lexer);
 					label.type = TOK_REG;
 					excepted = TOK_ASSIGN;
 				}
@@ -304,6 +319,11 @@ int compile(char* inp, char* file, char* code, char* data)
 					label.type |= TOK_INT;
 					write_label(label, code, data);
 					free(label.name);
+				} else if (label.type == TOK_REG)
+				{
+					label.assign = RI;
+					write_code(label, code);
+					free(label.name);
 				} else if (status.reassign == 0)
 				{
 					tmp_val = strtol(label.val, NULL, 16);
@@ -324,10 +344,6 @@ int compile(char* inp, char* file, char* code, char* data)
 					strcat(code, "\tlri 0x0e, ");
 					strcat(code, label.val);
 					strcat(code, "\n");
-				} else if (label.type == TOK_REG)
-				{
-					tmp_val = strtol(label.val, NULL, 16);
-					sprintf(code + strlen(code), "\tlri 0x%02x, 0x%02x\n", atoi(label.name + 2), tmp_val);
 				}
 				label.type = 0x00;
 				excepted = TOK_SEMICOLON;
@@ -396,10 +412,10 @@ int compile(char* inp, char* file, char* code, char* data)
 				label.val = NULL;
 				excepted = TOK_REG;
 			break;
-			/*case TOK_CASE:
-			status.cases
-				label.type = TOK_COND;
-			break;*/
+			case TOK_GOTO:
+				excepted = TOK_NAME;
+				label.type = TOK_GOTO;
+			break;
 			case TOK_END:
 			break;
 			default:
@@ -466,14 +482,14 @@ int main(int argc, char* argv[])
 			break;
 			case 'h':
 				printf("Usage: %s [options] file\n\n", argv[0]);
-				printf("Options:\n");
-				printf("  --help\tDisplay this help and exit.\n");
-				printf("  --output=FILE\tPlace the output into <FILE>.\n");
-				printf("  --no-preproc\tDo not preprocess.\n");
-				printf("  -o FILE\tSame as --output.\n");
-				printf("  -h\t\tSame as --help.\n");
-				printf("  -n\t\tSame as --no-preproc.\n");
-				printf("  -S\t\tCompile only; do not assemble.\n");
+				fast_printf("Options:\n");
+				fast_printf("  --help\tDisplay this help and exit.\n");
+				fast_printf("  --output=FILE\tPlace the output into <FILE>.\n");
+				fast_printf("  --no-preproc\tDo not preprocess.\n");
+				fast_printf("  -o FILE\tSame as --output.\n");
+				fast_printf("  -h\t\tSame as --help.\n");
+				fast_printf("  -n\t\tSame as --no-preproc.\n");
+				fast_printf("  -S\t\tCompile only; do not assemble.\n");
 				
 				return 0;
 			break;
@@ -561,4 +577,3 @@ int main(int argc, char* argv[])
 	free_buffs(buff, out_code, out_data);
 	return 0;
 }
-//execl("/usr/bin/env", "env", "n2as", "-o", out_path, tmp_template, NULL);

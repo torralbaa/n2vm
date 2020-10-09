@@ -1,4 +1,5 @@
 var abc = "Hello World!\n";
+var after_loop = "From main...\n";
 var i = 0x01;
 
 /*
@@ -10,9 +11,30 @@ func main
 {
 	cmp $r1 $r2; // Dummy comparison
 	i = 0xffff7f; // Single-line comment!
+
 	$r1 = abc;
 	call print;
+
+	$r2 = 0x00;
+	$r4 = 0x04;
+	call loop;
+
+	$r1 = after_loop;
+	call print;
+
 	return 0x00;
+}
+
+func loop
+{
+	asm "inc 0x02";
+	cmp $r2 $r4;
+	asm "ret !eq";
+
+	$r1 = abc;
+	call print;
+
+	goto loop;
 }
 
 func print

@@ -32,7 +32,9 @@ inst_regex = r"([a-z]{3})";
 reg_regex = r"(0x[0-9a-f]{1,2})";
 val_regex = r"(0x[0-9a-f]{1,4}|@[_a-z][_a-z0-9]*)";
 cond_regex = r"(0x[0-9a-f]{1,4}|@[_a-z][_a-z0-9]*)";
-op_regex = f"^\s*{inst_regex}\s+({reg_regex}(\s*,\s*{val_regex})?)?(\s*!\s*(eq|ne|gt|lt|al))?\s*(;.*)?\s*$";
+extra_regex = r"(0x[0-9a-f]{1,3})";
+op_regex = f"^\s*{inst_regex}(\s+{reg_regex}(\s*,\s*{val_regex})?)?(\s+(\+|-)\s*{extra_regex})?(\s+!\s*(eq|ne|gt|lt|al))?\s*(;.*)?\s*$";
+
 ignore_regex = r"^(\s*|\s*;(.*)\s*)$";
 label_regex = r"^\s*(\.([_a-z][_a-z0-9]*):\s*)\s*$";
 data_regex = r"^\s*\.data\s+(\"(.+)\"|(0x[0-9a-f]{1,8}))\s*$";
@@ -80,6 +82,7 @@ line_num = 0;
 file_name = "";
 i = 0;
 
+INT11_MAX = 2047;
 INT16_MAX = 65535;
 INT24_MAX = 16777215;
 INT32_MAX = 4294967295;
@@ -133,7 +136,7 @@ def comp(asm):
 		pass;
 
 	try:
-		cond = conds[match.group(7)];
+		cond = conds[match.group(10)];
 	except KeyError:
 		pass;
 
@@ -144,6 +147,22 @@ def comp(asm):
 	if val > INT16_MAX:
 		comp_error(f"Integer overflow: {BOLD}{val} > INT16_MAX ({INT16_MAX}){RESET}.", plain);
 		return (None, -1);
+
+	tmp_offset = match.group(8);
+	if tmp_offset is not None:
+		if val >= 16:
+			comp_error(f"Invalid register: {BOLD}{val}{RESET}.", plain);
+			return (None, -1);
+		try:
+			offset = int(tmp_offset, 16);
+		except (IndexError, TypeError):
+			comp_error(f"Invalid offset: {BOLD}{tmp_offset}{RESET}.", plain);
+			return (None, -1);
+		if offset >= INT11_MAX:
+			comp_error(f"Invalid offset: {BOLD}{tmp_offset}{RESET}.", plain);
+		if match.group(7) == "-":
+			offset |= 0b100000000000;
+		val = (offset << 4) | val;
 
 	return (struct.pack(">H", (op << 8) | (cond << 4) | reg) + struct.pack("<H", val), 0);
 

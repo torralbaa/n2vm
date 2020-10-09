@@ -54,6 +54,7 @@ typedef enum token_t {
 	TOK_CMP,
 	TOK_CASE,
 	TOK_COND,
+	TOK_GOTO,
 	TOK_ANY
 } token_t;
 
@@ -70,7 +71,8 @@ typedef enum actions_t {
 	PREPROC,
 	COMPILE,
 	ASSEMBLE,
-	OPTIMIZE
+	OPTIMIZE,
+	GEN_EMP
 } actions_t;
 
 typedef struct lexer_t {

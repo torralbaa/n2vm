@@ -24,6 +24,24 @@
 #define OPS_H
 #include <misc.h>
 
+#define VAL2REG() \
+	unsigned short tmp_val = SHR((unsigned char*)&val); \
+	unsigned short src_reg = tmp_val << 12; \
+	short extra = tmp_val; \
+	src_reg >>= 12; \
+	if ((tmp_val >> 15) == 1) \
+	{ \
+		extra = -((tmp_val >> 4) & UINT11_MAX); \
+	} else \
+	{ \
+		extra = ((tmp_val >> 4) & UINT11_MAX); \
+	} \
+	if (src_reg > 0x0f) \
+	{ \
+		ERROR("Invalid register.\n"); \
+		return -1; \
+	}
+
 #define SIMPLE(name, code) \
 int name(n2vm_t* vm, unsigned char reg, unsigned short val) \
 { \
@@ -54,16 +72,9 @@ int name(n2vm_t* vm, unsigned char reg, unsigned short val) \
 #define MATH(name, operation) \
 int name ## _op(n2vm_t* vm, unsigned char reg, unsigned short val) \
 { \
-	unsigned int src_reg = SHR((unsigned char*)&val);; \
-	src_reg = src_reg << 12; \
-	src_reg >>= 12; \
-	LOG_MATH(name, reg, src_reg); \
-	if (src_reg > 0x0f) \
-	{ \
-		ERROR("Invalid register.\n"); \
-		return -1; \
-	} \
+	VAL2REG(); \
 	vm->gpr[reg] operation vm->gpr[src_reg]; \
+	vm->gpr[reg] operation extra; \
 	vm->gpr[0x0f] += 4; \
 	return 0; \
 };
@@ -85,15 +96,5 @@ int name(n2vm_t* vm, unsigned char reg, unsigned short val) \
 	vm->gpr[0x0f] += 4; \
 	return rt; \
 };
-
-#define VAL2REG() \
-	unsigned short src_reg = SHR((unsigned char*)&val); \
-	src_reg = src_reg << 12; \
-	src_reg >>= 12; \
-	if (src_reg > 0x10) \
-	{ \
-		ERROR("Invalid register.\n"); \
-		return -1; \
-	} \
 
 #endif /* OPS_H */
