@@ -32,6 +32,7 @@ No Name Virtual Machine: A simple VM.
    + [`typedef int (*op_t)()`](#typedef-int-op_t)
    + [`int n2vm_init()`](#int-n2vm_init)
    + [`n2vm_t* n2vm_new(int mem_min, int mem_max, int stack_max, int sys_max)`](#n2vm_t-n2vm_newint-mem_min-int-mem_max-int-stack_max-int-sys_max)
+   + [`int n2vm_bind(n2vm_t* vm, op_t handler, int* index)`](#int-n2vm_bindn2vm_t-vm-op_t-handler-int-index)
    + [`int n2vm_run(n2vm_t* vm)`](#int-n2vm_runn2vm_t-vm)
    + [`int n2vm_clean(n2vm_t* vm)`](#int-n2vm_cleann2vm_t-vm)
  + [Extras](#extras)
@@ -416,7 +417,7 @@ Returns a pointer to a new VM. All the arguments are required.
 
 Returns `NULL` and sets `errno` to `ENOMEM` if it fails to allocate at least `sizeof(n2vm_t) + mem_min` bytes of memory.
 
-## `int n2vm_bind(n2vm_t* vm, op_t handler, int* index)`
+### `int n2vm_bind(n2vm_t* vm, op_t handler, int* index)`
 Tries to bind (assign) the `handler` function to an I/O port (dereferenced from `index`) of `vm`.
  + `vm`: A pointer to the VM.
  + `handler`: A pointer to a function matching (or compatible with) the [`op_t`](#typedef-int-op_t) prototype.
