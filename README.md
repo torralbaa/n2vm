@@ -1,4 +1,7 @@
 # n2vm
+
+[![Join the chat at https://gitter.im/n2vm/community](https://badges.gitter.im/n2vm/community.svg)](https://gitter.im/n2vm/community?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
+
 No Name Virtual Machine: A simple VM.
 
 ## Table of Contents
